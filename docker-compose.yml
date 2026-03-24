@@ -58,6 +58,7 @@ services:
 volumes:
   smart_attendance_db_data:
 
+
 networks:
   smart_attendance_net:
     driver: bridge
