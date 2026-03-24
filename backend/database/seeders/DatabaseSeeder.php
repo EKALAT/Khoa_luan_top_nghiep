@@ -12,6 +12,8 @@ class DatabaseSeeder extends Seeder
             RoleSeeder::class,
             DepartmentSeeder::class,
             UserSeeder::class,
+            WorkLocationSeeder::class,
+            ShiftRuleSeeder::class,
         ]);
     }
 }

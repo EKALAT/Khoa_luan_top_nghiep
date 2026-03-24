@@ -56,29 +56,49 @@ class AuthController extends Controller
     }
 
     public function me(Request $request): JsonResponse
-    {
-        $user = $request->user()->load(['role', 'department']);
+{
+    $user = $request->user();
 
+    if (! $user) {
         return response()->json([
-            'user' => [
-                'id' => $user->id,
-                'employee_code' => $user->employee_code,
-                'name' => $user->name,
-                'email' => $user->email,
-                'phone' => $user->phone,
-                'role' => $user->role?->name,
-                'department' => $user->department?->name,
-                'last_login_at' => $user->last_login_at,
-            ],
-        ]);
+            'message' => 'Unauthenticated.',
+        ], 401);
     }
 
-    public function logout(Request $request): JsonResponse
-    {
-        $request->user()->currentAccessToken()->delete();
+    $user->load(['role', 'department']);
 
+    return response()->json([
+        'user' => [
+            'id' => $user->id,
+            'employee_code' => $user->employee_code,
+            'name' => $user->name,
+            'email' => $user->email,
+            'phone' => $user->phone,
+            'role' => $user->role?->name,
+            'department' => $user->department?->name,
+            'last_login_at' => $user->last_login_at,
+        ],
+    ]);
+}
+
+public function logout(Request $request): JsonResponse
+{
+    $user = $request->user();
+
+    if (! $user) {
         return response()->json([
-            'message' => 'Đăng xuất thành công.',
-        ]);
+            'message' => 'Unauthenticated.',
+        ], 401);
+    }
+
+    $token = $user->currentAccessToken();
+
+    if ($token) {
+        $token->delete();
+    }
+
+    return response()->json([
+        'message' => 'Đăng xuất thành công.',
+    ]);
     }
 }
