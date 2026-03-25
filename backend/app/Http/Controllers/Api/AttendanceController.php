@@ -1,0 +1,361 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\AttendanceLog;
+use App\Models\AttendanceRecord;
+use App\Models\ShiftRule;
+use App\Models\WorkLocation;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+
+class AttendanceController extends Controller
+{
+    public function checkIn(Request $request): JsonResponse
+    {
+        return $this->handleAttendance($request, 'check_in');
+    }
+
+    public function checkOut(Request $request): JsonResponse
+    {
+        return $this->handleAttendance($request, 'check_out');
+    }
+
+    public function index(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $records = AttendanceRecord::query()
+            ->with(['workLocation'])
+            ->where('user_id', $user->id)
+            ->orderByDesc('check_date')
+            ->orderByDesc('check_time')
+            ->paginate(10);
+
+        return response()->json($records);
+    }
+
+    public function show(Request $request, int $id): JsonResponse
+    {
+        $user = $request->user();
+
+        $record = AttendanceRecord::query()
+            ->with(['workLocation', 'logs'])
+            ->where('user_id', $user->id)
+            ->findOrFail($id);
+
+        return response()->json([
+            'data' => $record,
+        ]);
+    }
+
+    public function logs(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $logs = AttendanceLog::query()
+            ->with(['attendanceRecord'])
+            ->where('user_id', $user->id)
+            ->orderByDesc('captured_at')
+            ->paginate(20);
+
+        return response()->json($logs);
+    }
+
+    public function logShow(Request $request, int $id): JsonResponse
+    {
+        $user = $request->user();
+
+        $log = AttendanceLog::query()
+            ->with(['attendanceRecord'])
+            ->where('user_id', $user->id)
+            ->findOrFail($id);
+
+        return response()->json([
+            'data' => $log,
+        ]);
+    }
+
+    private function handleAttendance(Request $request, string $mode): JsonResponse
+    {
+        $validated = $request->validate([
+            'work_location_id' => ['required', 'integer', 'exists:work_locations,id'],
+            'latitude' => ['required', 'numeric', 'between:-90,90'],
+            'longitude' => ['required', 'numeric', 'between:-180,180'],
+            'accuracy_m' => ['required', 'numeric', 'min:0'],
+            'network_info' => ['nullable', 'string', 'max:255'],
+            'device_info' => ['nullable', 'string'],
+        ]);
+
+        $user = $request->user();
+
+        if (! $user) {
+            return response()->json([
+                'message' => 'Unauthenticated.',
+            ], 401);
+        }
+
+        $shiftRule = ShiftRule::query()
+            ->where('is_active', true)
+            ->orderBy('id')
+            ->first();
+
+        if (! $shiftRule) {
+            return response()->json([
+                'message' => 'Chưa có cấu hình ca làm việc đang hoạt động.',
+            ], 422);
+        }
+
+        $workLocation = WorkLocation::query()
+            ->where('is_active', true)
+            ->find($validated['work_location_id']);
+
+        if (! $workLocation) {
+            return response()->json([
+                'message' => 'Địa điểm làm việc không hợp lệ hoặc đã bị vô hiệu hóa.',
+            ], 422);
+        }
+
+        $now = now();
+        $timeNow = $now->format('H:i:s');
+        $checkDate = $now->toDateString();
+        $checkTime = $now->format('H:i:s');
+
+        $checkType = $this->resolveCheckType($mode, $shiftRule, $timeNow);
+
+        if (! $checkType) {
+            $this->createInvalidLog(
+                userId: $user->id,
+                attendanceRecordId: null,
+                lat: (float) $validated['latitude'],
+                lng: (float) $validated['longitude'],
+                accuracyM: (float) $validated['accuracy_m'],
+                deviceInfo: $validated['device_info'] ?? null,
+                networkInfo: $validated['network_info'] ?? null,
+                reason: 'wrong_time_window',
+            );
+
+            return response()->json([
+                'message' => 'Thời điểm chấm công không nằm trong khung giờ hợp lệ.',
+                'reason' => 'wrong_time_window',
+            ], 422);
+        }
+
+        $existingRecord = AttendanceRecord::query()
+            ->where('user_id', $user->id)
+            ->where('check_date', $checkDate)
+            ->where('check_type', $checkType)
+            ->first();
+
+        if ($existingRecord) {
+            $this->createInvalidLog(
+                userId: $user->id,
+                attendanceRecordId: $existingRecord->id,
+                lat: (float) $validated['latitude'],
+                lng: (float) $validated['longitude'],
+                accuracyM: (float) $validated['accuracy_m'],
+                deviceInfo: $validated['device_info'] ?? null,
+                networkInfo: $validated['network_info'] ?? null,
+                reason: 'duplicate_check',
+            );
+
+            return response()->json([
+                'message' => 'Bạn đã chấm công cho mốc này trong ngày.',
+                'reason' => 'duplicate_check',
+            ], 422);
+        }
+
+        $distanceM = $this->calculateDistanceMeters(
+            (float) $validated['latitude'],
+            (float) $validated['longitude'],
+            (float) $workLocation->latitude,
+            (float) $workLocation->longitude,
+        );
+
+        if ((float) $validated['accuracy_m'] > 20) {
+            $this->createInvalidLog(
+                userId: $user->id,
+                attendanceRecordId: null,
+                lat: (float) $validated['latitude'],
+                lng: (float) $validated['longitude'],
+                accuracyM: (float) $validated['accuracy_m'],
+                deviceInfo: $validated['device_info'] ?? null,
+                networkInfo: $validated['network_info'] ?? null,
+                reason: 'low_accuracy',
+            );
+
+            return response()->json([
+                'message' => 'Độ chính xác GPS vượt quá ngưỡng cho phép.',
+                'reason' => 'low_accuracy',
+            ], 422);
+        }
+
+        if ($distanceM > (float) $workLocation->radius_m) {
+            $this->createInvalidLog(
+                userId: $user->id,
+                attendanceRecordId: null,
+                lat: (float) $validated['latitude'],
+                lng: (float) $validated['longitude'],
+                accuracyM: (float) $validated['accuracy_m'],
+                deviceInfo: $validated['device_info'] ?? null,
+                networkInfo: $validated['network_info'] ?? null,
+                reason: 'outside_geofence',
+            );
+
+            return response()->json([
+                'message' => 'Bạn đang ở ngoài phạm vi cho phép.',
+                'reason' => 'outside_geofence',
+                'distance_m' => round($distanceM, 2),
+            ], 422);
+        }
+
+        if (! $this->passesNetworkRule($workLocation->allowed_network, $validated['network_info'] ?? null)) {
+            $this->createInvalidLog(
+                userId: $user->id,
+                attendanceRecordId: null,
+                lat: (float) $validated['latitude'],
+                lng: (float) $validated['longitude'],
+                accuracyM: (float) $validated['accuracy_m'],
+                deviceInfo: $validated['device_info'] ?? null,
+                networkInfo: $validated['network_info'] ?? null,
+                reason: 'wrong_network',
+            );
+
+            return response()->json([
+                'message' => 'Thiết bị không kết nối đúng mạng hợp lệ.',
+                'reason' => 'wrong_network',
+            ], 422);
+        }
+
+        $record = DB::transaction(function () use (
+            $user,
+            $workLocation,
+            $checkType,
+            $checkDate,
+            $checkTime,
+            $distanceM,
+            $validated
+        ) {
+            $attendanceRecord = AttendanceRecord::create([
+                'user_id' => $user->id,
+                'work_location_id' => $workLocation->id,
+                'check_type' => $checkType,
+                'status' => 'valid',
+                'check_date' => $checkDate,
+                'check_time' => $checkTime,
+                'distance_m' => round($distanceM, 2),
+                'accuracy_m' => $validated['accuracy_m'],
+                'reason' => null,
+            ]);
+
+            AttendanceLog::create([
+                'user_id' => $user->id,
+                'attendance_record_id' => $attendanceRecord->id,
+                'lat' => $validated['latitude'],
+                'lng' => $validated['longitude'],
+                'accuracy_m' => $validated['accuracy_m'],
+                'captured_at' => now(),
+                'device_info' => $validated['device_info'] ?? null,
+                'network_info' => $validated['network_info'] ?? null,
+                'result' => 'valid',
+                'reason' => null,
+            ]);
+
+            return $attendanceRecord;
+        });
+
+        return response()->json([
+            'message' => 'Chấm công thành công.',
+            'data' => $record,
+        ], 201);
+    }
+
+    private function resolveCheckType(string $mode, ShiftRule $shiftRule, string $timeNow): ?string
+    {
+        if ($mode === 'check_in') {
+            if ($this->isBetweenInclusive($timeNow, $shiftRule->morning_check_in_start, $shiftRule->morning_check_in_end)) {
+                return 'morning_check_in';
+            }
+
+            if ($this->isBetweenInclusive($timeNow, $shiftRule->afternoon_check_in_start, $shiftRule->afternoon_check_in_end)) {
+                return 'afternoon_check_in';
+            }
+
+            return null;
+        }
+
+        if ($this->isBetweenInclusive($timeNow, $shiftRule->morning_check_out_start, $shiftRule->morning_check_out_end)) {
+            return 'morning_check_out';
+        }
+
+        if ($this->isBetweenInclusive($timeNow, $shiftRule->afternoon_check_out_start, $shiftRule->afternoon_check_out_end)) {
+            return 'afternoon_check_out';
+        }
+
+        return null;
+    }
+
+    private function isBetweenInclusive(string $value, string $start, string $end): bool
+    {
+        return $value >= $start && $value <= $end;
+    }
+
+    private function passesNetworkRule(?string $allowedNetwork, ?string $networkInfo): bool
+    {
+        if (! $allowedNetwork || trim($allowedNetwork) === '') {
+            return true;
+        }
+
+        if (! $networkInfo) {
+            return false;
+        }
+
+        return stripos($networkInfo, $allowedNetwork) !== false;
+    }
+
+    private function calculateDistanceMeters(
+        float $lat1,
+        float $lng1,
+        float $lat2,
+        float $lng2
+    ): float {
+        $earthRadius = 6371000;
+
+        $dLat = deg2rad($lat2 - $lat1);
+        $dLng = deg2rad($lng2 - $lng1);
+
+        $a = sin($dLat / 2) * sin($dLat / 2)
+            + cos(deg2rad($lat1)) * cos(deg2rad($lat2))
+            * sin($dLng / 2) * sin($dLng / 2);
+
+        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+
+        return $earthRadius * $c;
+    }
+
+    private function createInvalidLog(
+        int $userId,
+        ?int $attendanceRecordId,
+        float $lat,
+        float $lng,
+        float $accuracyM,
+        ?string $deviceInfo,
+        ?string $networkInfo,
+        string $reason
+    ): void {
+        AttendanceLog::create([
+            'user_id' => $userId,
+            'attendance_record_id' => $attendanceRecordId,
+            'lat' => $lat,
+            'lng' => $lng,
+            'accuracy_m' => $accuracyM,
+            'captured_at' => now(),
+            'device_info' => $deviceInfo,
+            'network_info' => $networkInfo,
+            'result' => 'invalid',
+            'reason' => $reason,
+        ]);
+    }
+}

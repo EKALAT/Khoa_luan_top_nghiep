@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ShiftRuleController;
 use App\Http\Controllers\Api\WorkLocationController;
@@ -17,4 +18,12 @@ Route::prefix('auth')->group(function () {
 Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('work-locations', WorkLocationController::class);
     Route::apiResource('shift-rules', ShiftRuleController::class);
+
+    Route::post('/attendance/check-in', [AttendanceController::class, 'checkIn']);
+    Route::post('/attendance/check-out', [AttendanceController::class, 'checkOut']);
+
+    Route::get('/attendance/logs', [AttendanceController::class, 'logs']);
+    Route::get('/attendance/logs/{id}', [AttendanceController::class, 'logShow']);
+    Route::get('/attendance', [AttendanceController::class, 'index']);
+    Route::get('/attendance/{id}', [AttendanceController::class, 'show']);
 });
