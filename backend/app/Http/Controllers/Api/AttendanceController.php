@@ -167,6 +167,30 @@ class AttendanceController extends Controller
             ], 422);
         }
 
+        $missingCheckInMessage = $this->getMissingCheckInMessage(
+            $user->id,
+            $checkDate,
+            $checkType,
+        );
+
+        if ($missingCheckInMessage) {
+            $this->createInvalidLog(
+                userId: $user->id,
+                attendanceRecordId: null,
+                lat: (float) $validated['latitude'],
+                lng: (float) $validated['longitude'],
+                accuracyM: (float) $validated['accuracy_m'],
+                deviceInfo: $validated['device_info'] ?? null,
+                networkInfo: $validated['network_info'] ?? null,
+                reason: 'missing_check_in',
+            );
+
+            return response()->json([
+                'message' => $missingCheckInMessage,
+                'reason' => 'missing_check_in',
+            ], 422);
+        }
+
         $distanceM = $this->calculateDistanceMeters(
             (float) $validated['latitude'],
             (float) $validated['longitude'],
@@ -313,6 +337,37 @@ class AttendanceController extends Controller
         }
 
         return stripos($networkInfo, $allowedNetwork) !== false;
+    }
+
+    private function getMissingCheckInMessage(int $userId, string $checkDate, string $checkType): ?string
+    {
+        if ($checkType === 'morning_check_out') {
+            $hasValidCheckIn = AttendanceRecord::query()
+                ->where('user_id', $userId)
+                ->where('check_date', $checkDate)
+                ->where('check_type', 'morning_check_in')
+                ->where('status', 'valid')
+                ->exists();
+
+            return $hasValidCheckIn
+                ? null
+                : 'Bạn chưa chấm công vào ca sáng nên không thể chấm công ra ca sáng.';
+        }
+
+        if ($checkType === 'afternoon_check_out') {
+            $hasValidCheckIn = AttendanceRecord::query()
+                ->where('user_id', $userId)
+                ->where('check_date', $checkDate)
+                ->where('check_type', 'afternoon_check_in')
+                ->where('status', 'valid')
+                ->exists();
+
+            return $hasValidCheckIn
+                ? null
+                : 'Bạn chưa chấm công vào ca chiều nên không thể chấm công ra ca chiều.';
+        }
+
+        return null;
     }
 
     private function calculateDistanceMeters(
