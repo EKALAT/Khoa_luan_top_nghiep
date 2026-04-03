@@ -1,0 +1,843 @@
+{
+  "info": {
+    "_postman_id": "3b90fd54-9bb9-4c0d-9d76-9d424a6ee1c5",
+    "name": "Smart Attendance PMS",
+    "description": "Postman collection mau cho Smart Attendance PMS backend. Login se luu token vao collection variable. Cac request attendance da co san body cho tung case test.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "employee_code",
+      "value": "nv001"
+    },
+    {
+      "key": "password",
+      "value": "Ekalat_9090"
+    },
+    {
+      "key": "work_location_id",
+      "value": "2"
+    },
+    {
+      "key": "valid_latitude",
+      "value": "10.762622"
+    },
+    {
+      "key": "valid_longitude",
+      "value": "106.660172"
+    },
+    {
+      "key": "far_latitude",
+      "value": "10.780000"
+    },
+    {
+      "key": "far_longitude",
+      "value": "106.700000"
+    },
+    {
+      "key": "valid_accuracy_m",
+      "value": "5"
+    },
+    {
+      "key": "low_accuracy_m",
+      "value": "25"
+    },
+    {
+      "key": "valid_network_info",
+      "value": "Company WiFi"
+    },
+    {
+      "key": "invalid_network_info",
+      "value": "Guest WiFi"
+    },
+    {
+      "key": "device_info",
+      "value": "Postman test"
+    },
+    {
+      "key": "filter_date",
+      "value": "2026-03-25"
+    },
+    {
+      "key": "filter_from",
+      "value": "2026-03-01"
+    },
+    {
+      "key": "filter_to",
+      "value": "2026-03-31"
+    },
+    {
+      "key": "profile_name",
+      "value": "Nguyen Van A Updated"
+    },
+    {
+      "key": "profile_email",
+      "value": "nv001.updated@example.com"
+    },
+    {
+      "key": "profile_phone",
+      "value": "0901234567"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "let data = {};",
+                  "try {",
+                  "    data = pm.response.json();",
+                  "} catch (error) {",
+                  "    data = {};",
+                  "}",
+                  "",
+                  "if (data.token) {",
+                  "    pm.collectionVariables.set('token', data.token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_code\": \"{{employee_code}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Dang nhap va tu dong luu Bearer token vao collection variable `token`."
+          },
+          "response": []
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "me"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    pm.collectionVariables.unset('token');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/logout",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Reference",
+      "item": [
+        {
+          "name": "Get Work Locations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/work-locations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "work-locations"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Shift Rules",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/shift-rules",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "shift-rules"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Profile",
+      "item": [
+        {
+          "name": "Get Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/profile",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "profile"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{profile_name}}\",\n  \"email\": \"{{profile_email}}\",\n  \"phone\": \"{{profile_phone}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/profile",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "profile"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Attendance Filters",
+      "item": [
+        {
+          "name": "List Attendance",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/attendance",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "attendance"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Filter By Date",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/attendance?date={{filter_date}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "attendance"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "{{filter_date}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Filter By Date Range",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/attendance?from={{filter_from}}&to={{filter_to}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "attendance"
+              ],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "{{filter_from}}"
+                },
+                {
+                  "key": "to",
+                  "value": "{{filter_to}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Filter By Status Valid",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/attendance?status=valid",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "attendance"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "valid"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Filter By Check Type Morning Check In",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/attendance?check_type=morning_check_in",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "attendance"
+              ],
+              "query": [
+                {
+                  "key": "check_type",
+                  "value": "morning_check_in"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Attendance Business Rules",
+      "item": [
+        {
+          "name": "Check In - Valid Template",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"work_location_id\": {{work_location_id}},\n  \"latitude\": {{valid_latitude}},\n  \"longitude\": {{valid_longitude}},\n  \"accuracy_m\": {{valid_accuracy_m}},\n  \"network_info\": \"{{valid_network_info}}\",\n  \"device_info\": \"{{device_info}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/attendance/check-in",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "check-in"
+              ]
+            },
+            "description": "Dung trong dung khung gio check-in de test case thanh cong."
+          },
+          "response": []
+        },
+        {
+          "name": "Check Out - Valid Template",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"work_location_id\": {{work_location_id}},\n  \"latitude\": {{valid_latitude}},\n  \"longitude\": {{valid_longitude}},\n  \"accuracy_m\": {{valid_accuracy_m}},\n  \"network_info\": \"{{valid_network_info}}\",\n  \"device_info\": \"{{device_info}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/attendance/check-out",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "check-out"
+              ]
+            },
+            "description": "Dung trong dung khung gio check-out de test case thanh cong."
+          },
+          "response": []
+        },
+        {
+          "name": "wrong_time_window - Check In",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"work_location_id\": {{work_location_id}},\n  \"latitude\": {{valid_latitude}},\n  \"longitude\": {{valid_longitude}},\n  \"accuracy_m\": {{valid_accuracy_m}},\n  \"network_info\": \"{{valid_network_info}}\",\n  \"device_info\": \"{{device_info}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/attendance/check-in",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "check-in"
+              ]
+            },
+            "description": "Chay ngoai khung gio morning_check_in hoac afternoon_check_in. Ky vong 422, reason = wrong_time_window."
+          },
+          "response": []
+        },
+        {
+          "name": "duplicate_check - Check In Again",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"work_location_id\": {{work_location_id}},\n  \"latitude\": {{valid_latitude}},\n  \"longitude\": {{valid_longitude}},\n  \"accuracy_m\": {{valid_accuracy_m}},\n  \"network_info\": \"{{valid_network_info}}\",\n  \"device_info\": \"{{device_info}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/attendance/check-in",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "check-in"
+              ]
+            },
+            "description": "Gui request nay 2 lan lien tiep trong cung khung gio hop le. Lan 2 ky vong 422, reason = duplicate_check."
+          },
+          "response": []
+        },
+        {
+          "name": "low_accuracy - Check In",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"work_location_id\": {{work_location_id}},\n  \"latitude\": {{valid_latitude}},\n  \"longitude\": {{valid_longitude}},\n  \"accuracy_m\": {{low_accuracy_m}},\n  \"network_info\": \"{{valid_network_info}}\",\n  \"device_info\": \"{{device_info}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/attendance/check-in",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "check-in"
+              ]
+            },
+            "description": "Chay trong khung gio check-in hop le. Ky vong 422, reason = low_accuracy."
+          },
+          "response": []
+        },
+        {
+          "name": "outside_geofence - Check In",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"work_location_id\": {{work_location_id}},\n  \"latitude\": {{far_latitude}},\n  \"longitude\": {{far_longitude}},\n  \"accuracy_m\": {{valid_accuracy_m}},\n  \"network_info\": \"{{valid_network_info}}\",\n  \"device_info\": \"{{device_info}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/attendance/check-in",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "check-in"
+              ]
+            },
+            "description": "Chay trong khung gio check-in hop le. Ky vong 422, reason = outside_geofence."
+          },
+          "response": []
+        },
+        {
+          "name": "wrong_network - Check In",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"work_location_id\": {{work_location_id}},\n  \"latitude\": {{valid_latitude}},\n  \"longitude\": {{valid_longitude}},\n  \"accuracy_m\": {{valid_accuracy_m}},\n  \"network_info\": \"{{invalid_network_info}}\",\n  \"device_info\": \"{{device_info}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/attendance/check-in",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "check-in"
+              ]
+            },
+            "description": "Chay trong khung gio check-in hop le. Ky vong 422, reason = wrong_network."
+          },
+          "response": []
+        },
+        {
+          "name": "missing_check_in - Morning Check Out",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"work_location_id\": {{work_location_id}},\n  \"latitude\": {{valid_latitude}},\n  \"longitude\": {{valid_longitude}},\n  \"accuracy_m\": {{valid_accuracy_m}},\n  \"network_info\": \"{{valid_network_info}}\",\n  \"device_info\": \"{{device_info}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/attendance/check-out",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "check-out"
+              ]
+            },
+            "description": "Chay trong khung gio morning_check_out, khi user chua co morning_check_in valid cung ngay. Ky vong 422, reason = missing_check_in."
+          },
+          "response": []
+        },
+        {
+          "name": "missing_check_in - Afternoon Check Out",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"work_location_id\": {{work_location_id}},\n  \"latitude\": {{valid_latitude}},\n  \"longitude\": {{valid_longitude}},\n  \"accuracy_m\": {{valid_accuracy_m}},\n  \"network_info\": \"{{valid_network_info}}\",\n  \"device_info\": \"{{device_info}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/attendance/check-out",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "check-out"
+              ]
+            },
+            "description": "Chay trong khung gio afternoon_check_out, khi user chua co afternoon_check_in valid cung ngay. Ky vong 422, reason = missing_check_in."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

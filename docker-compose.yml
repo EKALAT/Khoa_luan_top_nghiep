@@ -5,6 +5,8 @@ services:
       dockerfile: docker/php/Dockerfile
     container_name: smart_attendance_app
     working_dir: /var/www/html
+    environment:
+      TZ: Asia/Ho_Chi_Minh
     volumes:
       - ./backend:/var/www/html
     depends_on:
@@ -17,6 +19,8 @@ services:
     container_name: smart_attendance_nginx
     ports:
       - "8000:80"
+    environment:
+      TZ: Asia/Ho_Chi_Minh
     volumes:
       - ./backend:/var/www/html
       - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
@@ -30,6 +34,7 @@ services:
     container_name: smart_attendance_db
     restart: unless-stopped
     environment:
+      TZ: Asia/Ho_Chi_Minh
       MYSQL_DATABASE: smart_attendance
       MYSQL_ROOT_PASSWORD: root
       MYSQL_USER: laravel
@@ -48,6 +53,7 @@ services:
     ports:
       - "8080:80"
     environment:
+      TZ: Asia/Ho_Chi_Minh
       PMA_HOST: db
       MYSQL_ROOT_PASSWORD: root
     depends_on:

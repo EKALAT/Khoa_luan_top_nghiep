@@ -9,6 +9,10 @@ class ShiftRuleSeeder extends Seeder
 {
     public function run(): void
     {
+        ShiftRule::query()
+            ->where('is_active', true)
+            ->update(['is_active' => false]);
+
         ShiftRule::updateOrCreate(
             ['name' => 'Default Shift'],
             [

@@ -10,6 +10,7 @@ use App\Models\WorkLocation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class AttendanceController extends Controller
 {
@@ -23,16 +24,89 @@ class AttendanceController extends Controller
         return $this->handleAttendance($request, 'check_out');
     }
 
+    public function networkCheck(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'work_location_id' => ['required', 'integer', 'exists:work_locations,id'],
+            'network_info' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $workLocation = WorkLocation::query()
+            ->where('is_active', true)
+            ->find($validated['work_location_id']);
+
+        if (! $workLocation) {
+            return response()->json([
+                'message' => 'Địa điểm làm việc không hợp lệ hoặc đã bị vô hiệu hóa.',
+            ], 422);
+        }
+
+        $requestIp = $this->resolveRequestIp($request);
+        $isAllowed = $this->passesNetworkRule(
+            $workLocation->allowed_network,
+            $requestIp,
+        );
+
+        return response()->json([
+            'message' => $isAllowed
+                ? 'Mạng hiện tại hợp lệ để chấm công.'
+                : 'Mạng hiện tại không hợp lệ để chấm công.',
+            'reason' => $isAllowed ? null : 'wrong_network',
+            'data' => [
+                'work_location_id' => $workLocation->id,
+                'work_location_name' => $workLocation->name,
+                'request_ip' => $requestIp,
+                'allowed_network' => $workLocation->allowed_network,
+                'client_network_info' => $validated['network_info'] ?? null,
+                'is_allowed' => $isAllowed,
+            ],
+        ], $isAllowed ? 200 : 422);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
 
+        $filters = $request->validate([
+            'date' => ['nullable', 'date_format:Y-m-d'],
+            'from' => ['nullable', 'date_format:Y-m-d'],
+            'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
+            'check_type' => ['nullable', Rule::in([
+                'morning_check_in',
+                'morning_check_out',
+                'afternoon_check_in',
+                'afternoon_check_out',
+            ])],
+            'status' => ['nullable', Rule::in(['valid', 'invalid'])],
+        ]);
+
         $records = AttendanceRecord::query()
             ->with(['workLocation'])
             ->where('user_id', $user->id)
+            ->when(
+                $filters['date'] ?? null,
+                fn ($query, $date) => $query->whereDate('check_date', $date)
+            )
+            ->when(
+                $filters['from'] ?? null,
+                fn ($query, $from) => $query->whereDate('check_date', '>=', $from)
+            )
+            ->when(
+                $filters['to'] ?? null,
+                fn ($query, $to) => $query->whereDate('check_date', '<=', $to)
+            )
+            ->when(
+                $filters['check_type'] ?? null,
+                fn ($query, $checkType) => $query->where('check_type', $checkType)
+            )
+            ->when(
+                $filters['status'] ?? null,
+                fn ($query, $status) => $query->where('status', $status)
+            )
             ->orderByDesc('check_date')
             ->orderByDesc('check_time')
-            ->paginate(10);
+            ->paginate(10)
+            ->appends($request->query());
 
         return response()->json($records);
     }
@@ -97,6 +171,12 @@ class AttendanceController extends Controller
             ], 401);
         }
 
+        $requestIp = $this->resolveRequestIp($request);
+        $networkLogInfo = $this->buildNetworkLogInfo(
+            $validated['network_info'] ?? null,
+            $requestIp,
+        );
+
         $shiftRule = ShiftRule::query()
             ->where('is_active', true)
             ->orderBy('id')
@@ -133,7 +213,7 @@ class AttendanceController extends Controller
                 lng: (float) $validated['longitude'],
                 accuracyM: (float) $validated['accuracy_m'],
                 deviceInfo: $validated['device_info'] ?? null,
-                networkInfo: $validated['network_info'] ?? null,
+                networkInfo: $networkLogInfo,
                 reason: 'wrong_time_window',
             );
 
@@ -157,7 +237,7 @@ class AttendanceController extends Controller
                 lng: (float) $validated['longitude'],
                 accuracyM: (float) $validated['accuracy_m'],
                 deviceInfo: $validated['device_info'] ?? null,
-                networkInfo: $validated['network_info'] ?? null,
+                networkInfo: $networkLogInfo,
                 reason: 'duplicate_check',
             );
 
@@ -181,7 +261,7 @@ class AttendanceController extends Controller
                 lng: (float) $validated['longitude'],
                 accuracyM: (float) $validated['accuracy_m'],
                 deviceInfo: $validated['device_info'] ?? null,
-                networkInfo: $validated['network_info'] ?? null,
+                networkInfo: $networkLogInfo,
                 reason: 'missing_check_in',
             );
 
@@ -206,7 +286,7 @@ class AttendanceController extends Controller
                 lng: (float) $validated['longitude'],
                 accuracyM: (float) $validated['accuracy_m'],
                 deviceInfo: $validated['device_info'] ?? null,
-                networkInfo: $validated['network_info'] ?? null,
+                networkInfo: $networkLogInfo,
                 reason: 'low_accuracy',
             );
 
@@ -224,7 +304,7 @@ class AttendanceController extends Controller
                 lng: (float) $validated['longitude'],
                 accuracyM: (float) $validated['accuracy_m'],
                 deviceInfo: $validated['device_info'] ?? null,
-                networkInfo: $validated['network_info'] ?? null,
+                networkInfo: $networkLogInfo,
                 reason: 'outside_geofence',
             );
 
@@ -235,7 +315,10 @@ class AttendanceController extends Controller
             ], 422);
         }
 
-        if (! $this->passesNetworkRule($workLocation->allowed_network, $validated['network_info'] ?? null)) {
+        if (! $this->passesNetworkRule(
+            $workLocation->allowed_network,
+            $requestIp,
+        )) {
             $this->createInvalidLog(
                 userId: $user->id,
                 attendanceRecordId: null,
@@ -243,13 +326,20 @@ class AttendanceController extends Controller
                 lng: (float) $validated['longitude'],
                 accuracyM: (float) $validated['accuracy_m'],
                 deviceInfo: $validated['device_info'] ?? null,
-                networkInfo: $validated['network_info'] ?? null,
+                networkInfo: $networkLogInfo,
                 reason: 'wrong_network',
             );
 
             return response()->json([
                 'message' => 'Thiết bị không kết nối đúng mạng hợp lệ.',
                 'reason' => 'wrong_network',
+                'data' => [
+                    'work_location_id' => $workLocation->id,
+                    'work_location_name' => $workLocation->name,
+                    'request_ip' => $requestIp,
+                    'allowed_network' => $workLocation->allowed_network,
+                    'client_network_info' => $validated['network_info'] ?? null,
+                ],
             ], 422);
         }
 
@@ -260,7 +350,8 @@ class AttendanceController extends Controller
             $checkDate,
             $checkTime,
             $distanceM,
-            $validated
+            $validated,
+            $networkLogInfo
         ) {
             $attendanceRecord = AttendanceRecord::create([
                 'user_id' => $user->id,
@@ -282,7 +373,7 @@ class AttendanceController extends Controller
                 'accuracy_m' => $validated['accuracy_m'],
                 'captured_at' => now(),
                 'device_info' => $validated['device_info'] ?? null,
-                'network_info' => $validated['network_info'] ?? null,
+                'network_info' => $networkLogInfo,
                 'result' => 'valid',
                 'reason' => null,
             ]);
@@ -326,48 +417,53 @@ class AttendanceController extends Controller
         return $value >= $start && $value <= $end;
     }
 
-    private function passesNetworkRule(?string $allowedNetwork, ?string $networkInfo): bool
+    private function passesNetworkRule(?string $allowedNetwork, string $requestIp): bool
     {
         if (! $allowedNetwork || trim($allowedNetwork) === '') {
             return true;
         }
 
-        if (! $networkInfo) {
-            return false;
+        $rules = array_filter(array_map('trim', explode(',', $allowedNetwork)));
+
+        foreach ($rules as $rule) {
+            if (filter_var($rule, FILTER_VALIDATE_IP) && $requestIp === $rule) {
+                return true;
+            }
+
+            if ($this->isIpCidr($rule) && $this->ipMatchesCidr($requestIp, $rule)) {
+                return true;
+            }
         }
 
-        return stripos($networkInfo, $allowedNetwork) !== false;
+        return false;
     }
 
     private function getMissingCheckInMessage(int $userId, string $checkDate, string $checkType): ?string
     {
-        if ($checkType === 'morning_check_out') {
-            $hasValidCheckIn = AttendanceRecord::query()
-                ->where('user_id', $userId)
-                ->where('check_date', $checkDate)
-                ->where('check_type', 'morning_check_in')
-                ->where('status', 'valid')
-                ->exists();
+        $requiredCheckInType = match ($checkType) {
+            'morning_check_out' => 'morning_check_in',
+            'afternoon_check_out' => 'afternoon_check_in',
+            default => null,
+        };
 
-            return $hasValidCheckIn
-                ? null
-                : 'Bạn chưa chấm công vào ca sáng nên không thể chấm công ra ca sáng.';
+        if (! $requiredCheckInType) {
+            return null;
         }
 
-        if ($checkType === 'afternoon_check_out') {
-            $hasValidCheckIn = AttendanceRecord::query()
-                ->where('user_id', $userId)
-                ->where('check_date', $checkDate)
-                ->where('check_type', 'afternoon_check_in')
-                ->where('status', 'valid')
-                ->exists();
+        $hasValidCheckIn = AttendanceRecord::query()
+            ->where('user_id', $userId)
+            ->where('check_date', $checkDate)
+            ->where('check_type', $requiredCheckInType)
+            ->where('status', 'valid')
+            ->exists();
 
-            return $hasValidCheckIn
-                ? null
-                : 'Bạn chưa chấm công vào ca chiều nên không thể chấm công ra ca chiều.';
+        if ($hasValidCheckIn) {
+            return null;
         }
 
-        return null;
+        return $checkType === 'morning_check_out'
+            ? 'Bạn chưa chấm công vào ca sáng nên không thể chấm công ra ca sáng.'
+            : 'Bạn chưa chấm công vào ca chiều nên không thể chấm công ra ca chiều.';
     }
 
     private function calculateDistanceMeters(
@@ -388,6 +484,99 @@ class AttendanceController extends Controller
         $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
 
         return $earthRadius * $c;
+    }
+
+    private function resolveRequestIp(Request $request): string
+    {
+        $forwardedFor = $request->header('X-Forwarded-For');
+
+        if ($forwardedFor) {
+            $candidates = array_map('trim', explode(',', $forwardedFor));
+
+            foreach ($candidates as $candidate) {
+                if (filter_var($candidate, FILTER_VALIDATE_IP)) {
+                    return $candidate;
+                }
+            }
+        }
+
+        $realIp = $request->header('X-Real-IP');
+
+        if ($realIp && filter_var($realIp, FILTER_VALIDATE_IP)) {
+            return $realIp;
+        }
+
+        return $request->ip() ?? 'unknown';
+    }
+
+    private function buildNetworkLogInfo(?string $networkInfo, string $requestIp): string
+    {
+        $parts = [
+            'request_ip=' . $requestIp,
+        ];
+
+        if ($networkInfo && trim($networkInfo) !== '') {
+            $parts[] = 'client_network=' . trim($networkInfo);
+        }
+
+        return implode('; ', $parts);
+    }
+
+    private function isIpCidr(string $value): bool
+    {
+        if (! str_contains($value, '/')) {
+            return false;
+        }
+
+        [$subnet, $prefixLength] = explode('/', $value, 2);
+
+        if (! filter_var($subnet, FILTER_VALIDATE_IP) || ! ctype_digit($prefixLength)) {
+            return false;
+        }
+
+        $maxPrefixLength = filter_var($subnet, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) ? 128 : 32;
+
+        return (int) $prefixLength >= 0 && (int) $prefixLength <= $maxPrefixLength;
+    }
+
+    private function ipMatchesCidr(string $ip, string $cidr): bool
+    {
+        if (! filter_var($ip, FILTER_VALIDATE_IP)) {
+            return false;
+        }
+
+        [$subnet, $prefixLength] = explode('/', $cidr, 2);
+
+        $prefixLength = (int) $prefixLength;
+
+        $isIpv6Ip = filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6);
+        $isIpv6Subnet = filter_var($subnet, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6);
+
+        if ($isIpv6Ip !== $isIpv6Subnet) {
+            return false;
+        }
+
+        $ipBinary = inet_pton($ip);
+        $subnetBinary = inet_pton($subnet);
+
+        if ($ipBinary === false || $subnetBinary === false) {
+            return false;
+        }
+
+        $fullBytes = intdiv($prefixLength, 8);
+        $remainingBits = $prefixLength % 8;
+
+        if ($fullBytes > 0 && substr($ipBinary, 0, $fullBytes) !== substr($subnetBinary, 0, $fullBytes)) {
+            return false;
+        }
+
+        if ($remainingBits === 0) {
+            return true;
+        }
+
+        $mask = (0xFF << (8 - $remainingBits)) & 0xFF;
+
+        return (ord($ipBinary[$fullBytes]) & $mask) === (ord($subnetBinary[$fullBytes]) & $mask);
     }
 
     private function createInvalidLog(

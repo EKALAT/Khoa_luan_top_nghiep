@@ -17,7 +17,8 @@ class AuthController extends Controller
             'password' => ['required', 'string'],
         ]);
 
-        $user = User::with(['role', 'department'])
+        $user = User::query()
+            ->with(['role', 'department'])
             ->where('employee_code', $validated['employee_code'])
             ->first();
 
@@ -56,49 +57,49 @@ class AuthController extends Controller
     }
 
     public function me(Request $request): JsonResponse
-{
-    $user = $request->user();
+    {
+        $user = $request->user();
 
-    if (! $user) {
+        if (! $user) {
+            return response()->json([
+                'message' => 'Unauthenticated.',
+            ], 401);
+        }
+
+        $user->load(['role', 'department']);
+
         return response()->json([
-            'message' => 'Unauthenticated.',
-        ], 401);
+            'user' => [
+                'id' => $user->id,
+                'employee_code' => $user->employee_code,
+                'name' => $user->name,
+                'email' => $user->email,
+                'phone' => $user->phone,
+                'role' => $user->role?->name,
+                'department' => $user->department?->name,
+                'last_login_at' => $user->last_login_at,
+            ],
+        ]);
     }
 
-    $user->load(['role', 'department']);
+    public function logout(Request $request): JsonResponse
+    {
+        $user = $request->user();
 
-    return response()->json([
-        'user' => [
-            'id' => $user->id,
-            'employee_code' => $user->employee_code,
-            'name' => $user->name,
-            'email' => $user->email,
-            'phone' => $user->phone,
-            'role' => $user->role?->name,
-            'department' => $user->department?->name,
-            'last_login_at' => $user->last_login_at,
-        ],
-    ]);
-}
+        if (! $user) {
+            return response()->json([
+                'message' => 'Unauthenticated.',
+            ], 401);
+        }
 
-public function logout(Request $request): JsonResponse
-{
-    $user = $request->user();
+        $token = $user->currentAccessToken();
 
-    if (! $user) {
+        if ($token) {
+            $token->delete();
+        }
+
         return response()->json([
-            'message' => 'Unauthenticated.',
-        ], 401);
-    }
-
-    $token = $user->currentAccessToken();
-
-    if ($token) {
-        $token->delete();
-    }
-
-    return response()->json([
-        'message' => 'Đăng xuất thành công.',
-    ]);
+            'message' => 'Đăng xuất thành công.',
+        ]);
     }
 }

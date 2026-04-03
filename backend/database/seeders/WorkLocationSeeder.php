@@ -16,7 +16,7 @@ class WorkLocationSeeder extends Seeder
                 'latitude' => 10.7626220,
                 'longitude' => 106.6601720,
                 'radius_m' => 50,
-                'allowed_network' => 'Company WiFi',
+                'allowed_network' => '113.161.12.141',
                 'is_active' => true,
             ]
         );
