@@ -20,5 +20,17 @@ class WorkLocationSeeder extends Seeder
                 'is_active' => true,
             ]
         );
+
+        WorkLocation::updateOrCreate(
+            ['name' => 'MIDTrans'],
+            [
+                'address' => '02 Hoang Dieu, Nam Ly, Dong Hoi, Quang Tri, Vietnam',
+                'latitude' => 17.4665500,
+                'longitude' => 106.5985400,
+                'radius_m' => 50,
+                'allowed_network' => '113.161.12.141,2001:ee0:4bbb:a90::/64',
+                'is_active' => true,
+            ]
+        );
     }
 }

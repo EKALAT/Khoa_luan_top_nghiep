@@ -87,11 +87,11 @@ Content-Type: application/json
 
 ## Dữ liệu mẫu để test attendance
 
-- `work_location_id`: `1`
-- `allowed_network` của `work_location`: `113.161.12.141`
+- `work_location_id`: `2`
+- `allowed_network` của `work_location`: `113.161.12.141,2001:ee0:4bbb:a90::/64`
 - `network_info`: chỉ dùng để ghi log, không phải nguồn xác minh chính
-- `latitude`: `10.762622`
-- `longitude`: `106.660172`
+- `latitude`: `17.46655`
+- `longitude`: `106.59854`
 - `accuracy_m`: `5`
 
 Khung giờ mặc định:
@@ -103,7 +103,7 @@ Khung giờ mặc định:
 Rule mạng hiện tại:
 - Backend ưu tiên kiểm tra `public IP` thật của request theo `work_locations.allowed_network`
 - Hỗ trợ IP đơn, CIDR hoặc nhiều giá trị cách nhau bởi dấu phẩy
-- Ví dụ: `113.161.12.141` hoặc `113.161.12.128/27`
+- Ví dụ: `113.161.12.141`, `113.161.12.128/27` hoặc `2001:ee0:4bbb:a90::/64`
 - `network_info` client gửi lên chỉ để lưu log/phục vụ debug
 
 ## API chính
