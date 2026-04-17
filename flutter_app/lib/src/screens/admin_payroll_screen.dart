@@ -1,18 +1,16 @@
-import 'dart:io';
-
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../app_session.dart';
 import '../core/network/api_exception.dart';
-import '../core/utils/display_utils.dart';
-import '../models/admin_department_salary.dart';
+import '../core/utils/file_download.dart';
 import '../models/admin_payroll_overview.dart';
 import '../models/admin_payroll_user.dart';
+import '../models/department_option.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/section_card.dart';
-import '../widgets/status_badge.dart';
 
 class AdminPayrollScreen extends StatefulWidget {
   const AdminPayrollScreen({super.key, this.embedded = false});
@@ -25,9 +23,10 @@ class AdminPayrollScreen extends StatefulWidget {
 
 class _AdminPayrollScreenState extends State<AdminPayrollScreen> {
   final _searchController = TextEditingController();
+  final _currencyFormat = NumberFormat('#,##0.##', 'en_US');
 
   AdminPayrollOverview? _overview;
-  List<AdminDepartmentSalary> _departments = const [];
+  List<DepartmentOption> _departments = const [];
   bool _loading = true;
   bool _exporting = false;
   String? _errorMessage;
@@ -54,9 +53,8 @@ class _AdminPayrollScreenState extends State<AdminPayrollScreen> {
 
     try {
       final session = context.read<AppSession>();
-      final departmentsFuture =
-          session.adminPayrollRepository.fetchDepartmentSalaries();
-      final payrollFuture = session.adminPayrollRepository.fetchMonthlyPayroll(
+      final departmentsFuture = session.metaRepository.fetchDepartments();
+      final payrollFuture = session.adminPayrollRepository.fetchOverview(
         month: _selectedMonth,
       );
 
@@ -85,7 +83,7 @@ class _AdminPayrollScreenState extends State<AdminPayrollScreen> {
     }
   }
 
-  Future<void> _loadPayroll({int page = 1}) async {
+  Future<void> _loadOverview({int page = 1}) async {
     setState(() {
       _loading = true;
       _errorMessage = null;
@@ -93,7 +91,7 @@ class _AdminPayrollScreenState extends State<AdminPayrollScreen> {
 
     try {
       final session = context.read<AppSession>();
-      final overview = await session.adminPayrollRepository.fetchMonthlyPayroll(
+      final overview = await session.adminPayrollRepository.fetchOverview(
         month: _selectedMonth,
         search: _searchController.text,
         departmentId: _departmentIdFilter,
@@ -135,11 +133,20 @@ class _AdminPayrollScreenState extends State<AdminPayrollScreen> {
     }
 
     setState(() => _selectedMonth = DateTime(picked.year, picked.month));
-    await _loadPayroll();
+    await _loadOverview();
   }
 
-  Future<void> _exportPayroll() async {
+  Future<void> _exportCsv() async {
     if (_exporting) {
+      return;
+    }
+
+    if (!kIsWeb) {
+      AppToast.info(
+        'Nen test tren web',
+        message:
+            'Chuc nang xuat bang luong hien duoc toi uu de tai file truc tiep tren Flutter Web.',
+      );
       return;
     }
 
@@ -147,26 +154,29 @@ class _AdminPayrollScreenState extends State<AdminPayrollScreen> {
 
     try {
       final session = context.read<AppSession>();
-      final bytes = await session.adminPayrollRepository.exportMonthlyPayrollCsv(
+      final bytes = await session.adminPayrollRepository.exportCsv(
         month: _selectedMonth,
         search: _searchController.text,
         departmentId: _departmentIdFilter,
       );
 
-      final directory = await _resolveExportDirectory();
-      await directory.create(recursive: true);
-
-      final fileName =
+      final filename =
           'bang_luong_${_selectedMonth.year}_${_selectedMonth.month.toString().padLeft(2, '0')}.csv';
-      final file = File('${directory.path}${Platform.pathSeparator}$fileName');
-      await file.writeAsBytes(bytes, flush: true);
+
+      await downloadFile(
+        bytes: bytes,
+        filename: filename,
+        mimeType: 'text/csv;charset=utf-8',
+      );
 
       AppToast.success(
         'Xuat bang luong thanh cong',
-        message: 'Tap tin CSV da duoc luu tai ${file.path}',
+        message: 'Trinh duyet dang tai file $filename',
       );
     } on ApiException catch (error) {
       AppToast.warning('Xuat bang luong that bai', message: error.message);
+    } on UnsupportedError catch (error) {
+      AppToast.warning('Khong the tai file', message: error.message);
     } catch (error) {
       AppToast.error('Co loi xay ra', message: error.toString());
     } finally {
@@ -176,21 +186,251 @@ class _AdminPayrollScreenState extends State<AdminPayrollScreen> {
     }
   }
 
-  Future<Directory> _resolveExportDirectory() async {
-    if (!Platform.isAndroid) {
-      return getApplicationDocumentsDirectory();
-    }
+  Future<void> _editDepartmentSalary(DepartmentOption department) async {
+    await _openDepartmentSheet(existing: department);
+  }
 
-    final externalDir = await getExternalStorageDirectory();
-    if (externalDir != null) {
-      return Directory(
-        '${externalDir.path}${Platform.pathSeparator}payroll_exports',
-      );
-    }
+  Future<void> _openDepartmentSheet({DepartmentOption? existing}) async {
+    final nameController = TextEditingController(text: existing?.name ?? '');
+    final codeController = TextEditingController(text: existing?.code ?? '');
+    final descriptionController = TextEditingController(
+      text: existing?.description ?? '',
+    );
+    final salaryController = TextEditingController(
+      text: (existing?.monthlySalary ?? 0).toStringAsFixed(0),
+    );
+    bool isActive = existing?.isActive ?? true;
+    bool isSubmitting = false;
 
-    final documentsDir = await getApplicationDocumentsDirectory();
-    return Directory(
-      '${documentsDir.path}${Platform.pathSeparator}payroll_exports',
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                20,
+                8,
+                20,
+                MediaQuery.of(sheetContext).viewInsets.bottom + 20,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    existing == null
+                        ? 'Tao phong ban moi'
+                        : 'Chinh sua phong ban ${existing.name}',
+                    style: Theme.of(sheetContext).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    existing == null
+                        ? 'Nhap thong tin phong ban va muc luong co dinh theo thang.'
+                        : 'Cap nhat ten, ma, mo ta, trang thai va luong co dinh cua phong ban nay.',
+                    style: Theme.of(sheetContext).textTheme.bodyMedium?.copyWith(
+                          color: const Color(0xFF64748B),
+                        ),
+                  ),
+                  const SizedBox(height: 18),
+                  TextField(
+                    controller: nameController,
+                    autofocus: existing == null,
+                    decoration: const InputDecoration(
+                      labelText: 'Ten phong ban',
+                      hintText: 'VD: Ke toan',
+                      prefixIcon: Icon(Icons.apartment_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: codeController,
+                    decoration: const InputDecoration(
+                      labelText: 'Ma phong ban',
+                      hintText: 'VD: accounting',
+                      prefixIcon: Icon(Icons.tag_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: descriptionController,
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                      labelText: 'Mo ta',
+                      hintText: 'Mo ta ngan cho phong ban',
+                      prefixIcon: Icon(Icons.notes_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: salaryController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Luong thang',
+                      hintText: 'VD: 10000000',
+                      prefixIcon: Icon(Icons.payments_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  SwitchListTile.adaptive(
+                    value: isActive,
+                    onChanged: (value) {
+                      setModalState(() => isActive = value);
+                    },
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text(
+                      'Phong ban dang hoat dong',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: const Text(
+                      'Phong ban ngung hoat dong van duoc luu de theo doi lich su.',
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: isSubmitting
+                          ? null
+                          : () async {
+                              final name = nameController.text.trim();
+                              final code = codeController.text.trim();
+                              final parsed = double.tryParse(
+                                salaryController.text.trim().replaceAll(',', ''),
+                              );
+
+                              if (name.isEmpty || code.isEmpty) {
+                                AppToast.warning(
+                                  'Du lieu chua hop le',
+                                  message:
+                                      'Vui long nhap ten phong ban va ma phong ban.',
+                                );
+                                return;
+                              }
+
+                              if (parsed == null || parsed < 0) {
+                                AppToast.warning(
+                                  'Du lieu chua hop le',
+                                  message:
+                                      'Vui long nhap luong phong ban bang so va lon hon hoac bang 0.',
+                                );
+                                return;
+                              }
+
+                              setModalState(() => isSubmitting = true);
+
+                              try {
+                                final session = context.read<AppSession>();
+                                final result = existing == null
+                                    ? await session.adminDepartmentRepository
+                                        .createDepartment(
+                                          name: name,
+                                          code: code,
+                                          description:
+                                              descriptionController.text.trim().isEmpty
+                                              ? null
+                                              : descriptionController.text.trim(),
+                                          monthlySalary: parsed,
+                                          isActive: isActive,
+                                        )
+                                    : await session.adminDepartmentRepository
+                                        .updateDepartment(
+                                          departmentId: existing.id,
+                                          name: name,
+                                          code: code,
+                                          description:
+                                              descriptionController.text.trim().isEmpty
+                                              ? null
+                                              : descriptionController.text.trim(),
+                                          monthlySalary: parsed,
+                                          isActive: isActive,
+                                        );
+                                final (message, updatedDepartment) = result;
+
+                                if (!mounted) return;
+
+                                setState(() {
+                                  final exists = _departments.any(
+                                    (item) => item.id == updatedDepartment.id,
+                                  );
+                                  final next = exists
+                                      ? _departments
+                                          .map(
+                                            (item) =>
+                                                item.id == updatedDepartment.id
+                                                ? updatedDepartment
+                                                : item,
+                                          )
+                                          .toList(growable: false)
+                                      : [
+                                          ..._departments,
+                                          updatedDepartment,
+                                        ];
+
+                                  next.sort(
+                                    (left, right) => left.name.toLowerCase().compareTo(
+                                      right.name.toLowerCase(),
+                                    ),
+                                  );
+                                  _departments = next;
+                                });
+
+                                Navigator.of(sheetContext).pop();
+                                AppToast.success(
+                                  existing == null
+                                      ? 'Da tao phong ban'
+                                      : 'Da cap nhat phong ban',
+                                  message: message,
+                                );
+                                await _loadOverview(
+                                  page: _overview?.page.currentPage ?? 1,
+                                );
+                              } on ApiException catch (error) {
+                                AppToast.warning(
+                                  'Cap nhat that bai',
+                                  message: error.message,
+                                );
+                              } catch (error) {
+                                AppToast.error(
+                                  'Co loi xay ra',
+                                  message: error.toString(),
+                                );
+                              } finally {
+                                if (context.mounted) {
+                                  setModalState(() => isSubmitting = false);
+                                }
+                              }
+                            },
+                      child: isSubmitting
+                          ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Text(
+                              existing == null
+                                  ? 'Tao phong ban'
+                                  : 'Luu phong ban',
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -207,41 +447,7 @@ class _AdminPayrollScreenState extends State<AdminPayrollScreen> {
     return value.toStringAsFixed(1);
   }
 
-  Color _salaryStateColor(bool configured) {
-    return configured ? const Color(0xFF15803D) : const Color(0xFFB45309);
-  }
-
-  String _salaryStateLabel(AdminPayrollUser user) {
-    if (!user.hasSalaryConfigured) {
-      return 'Chua cau hinh';
-    }
-
-    if (user.payableWorkUnits >= user.standardWorkDays) {
-      return 'Du luong';
-    }
-
-    return 'Tinh theo cong';
-  }
-
-  String _dayStatusLabel(String status) {
-    return switch (status) {
-      'full_day' => 'Du cong',
-      'half_day' => 'Nua cong',
-      'incomplete' => 'Chua du',
-      'not_recorded' => 'Chua ghi nhan',
-      _ => status,
-    };
-  }
-
-  Color _dayStatusColor(String status) {
-    return switch (status) {
-      'full_day' => const Color(0xFFDCFCE7),
-      'half_day' => const Color(0xFFDBEAFE),
-      'incomplete' => const Color(0xFFFEF3C7),
-      'not_recorded' => const Color(0xFFF1F5F9),
-      _ => const Color(0xFFE2E8F0),
-    };
-  }
+  String _formatMoney(double value) => _currencyFormat.format(value);
 
   Widget _summaryStat({
     required String label,
@@ -251,7 +457,7 @@ class _AdminPayrollScreenState extends State<AdminPayrollScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.14),
+        color: Colors.white.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
       ),
@@ -280,426 +486,18 @@ class _AdminPayrollScreenState extends State<AdminPayrollScreen> {
     );
   }
 
-  Future<void> _showDepartmentForm({AdminDepartmentSalary? initial}) async {
-    final nameController = TextEditingController(text: initial?.name ?? '');
-    final codeController = TextEditingController(text: initial?.code ?? '');
-    final descriptionController = TextEditingController(
-      text: initial?.description ?? '',
-    );
-    final salaryController = TextEditingController(
-      text: initial == null ? '' : initial.monthlySalary.toStringAsFixed(0),
-    );
-    final formKey = GlobalKey<FormState>();
-    var isActive = initial?.isActive ?? true;
-    var submitting = false;
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      backgroundColor: Colors.white,
-      builder: (sheetContext) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            Future<void> submit() async {
-              if (!(formKey.currentState?.validate() ?? false)) {
-                return;
-              }
-
-              final monthlySalary =
-                  double.tryParse(salaryController.text.trim()) ?? 0;
-
-              setSheetState(() => submitting = true);
-
-              try {
-                final session = context.read<AppSession>();
-                final result = initial == null
-                    ? await session.adminPayrollRepository.createDepartmentSalary(
-                        name: nameController.text.trim(),
-                        code: codeController.text.trim().toUpperCase(),
-                        description: descriptionController.text.trim().isEmpty
-                            ? null
-                            : descriptionController.text.trim(),
-                        monthlySalary: monthlySalary,
-                        isActive: isActive,
-                      )
-                    : await session.adminPayrollRepository.updateDepartmentSalary(
-                        initial.id,
-                        name: nameController.text.trim(),
-                        code: codeController.text.trim().toUpperCase(),
-                        description: descriptionController.text.trim().isEmpty
-                            ? null
-                            : descriptionController.text.trim(),
-                        monthlySalary: monthlySalary,
-                        isActive: isActive,
-                      );
-
-                if (!mounted || !sheetContext.mounted) return;
-                Navigator.of(sheetContext).pop();
-                AppToast.success(
-                  initial == null ? 'Tao phong ban thanh cong' : 'Cap nhat thanh cong',
-                  message: result.$1,
-                );
-                await _bootstrap();
-              } on ApiException catch (error) {
-                AppToast.warning(
-                  initial == null ? 'Tao phong ban that bai' : 'Cap nhat that bai',
-                  message: error.message,
-                );
-              } catch (error) {
-                AppToast.error('Co loi xay ra', message: error.toString());
-              } finally {
-                if (sheetContext.mounted) {
-                  setSheetState(() => submitting = false);
-                }
-              }
-            }
-
-            return SafeArea(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(
-                  20,
-                  8,
-                  20,
-                  20 + MediaQuery.of(sheetContext).viewInsets.bottom,
-                ),
-                child: Form(
-                  key: formKey,
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          initial == null ? 'Them phong ban va luong' : 'Cap nhat phong ban',
-                          style: Theme.of(sheetContext).textTheme.titleLarge
-                              ?.copyWith(fontWeight: FontWeight.w800),
-                        ),
-                        const SizedBox(height: 6),
-                        const Text(
-                          'Luong thang se duoc ap cho tat ca nhan vien thuoc phong ban nay theo quy tac 25 cong.',
-                          style: TextStyle(
-                            color: Color(0xFF64748B),
-                            fontWeight: FontWeight.w600,
-                            height: 1.45,
-                          ),
-                        ),
-                        const SizedBox(height: 18),
-                        TextFormField(
-                          controller: nameController,
-                          decoration: const InputDecoration(
-                            labelText: 'Ten phong ban',
-                            hintText: 'VD: IT, Ke toan',
-                          ),
-                          validator: (value) {
-                            if ((value ?? '').trim().isEmpty) {
-                              return 'Vui long nhap ten phong ban.';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        TextFormField(
-                          controller: codeController,
-                          decoration: const InputDecoration(
-                            labelText: 'Ma phong ban',
-                            hintText: 'VD: IT, HR, KT',
-                          ),
-                          validator: (value) {
-                            if ((value ?? '').trim().isEmpty) {
-                              return 'Vui long nhap ma phong ban.';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        TextFormField(
-                          controller: descriptionController,
-                          decoration: const InputDecoration(
-                            labelText: 'Mo ta',
-                            hintText: 'Mo ta ngan cho phong ban nay',
-                          ),
-                          maxLines: 2,
-                        ),
-                        const SizedBox(height: 12),
-                        TextFormField(
-                          controller: salaryController,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'Luong thang mac dinh',
-                            hintText: 'VD: 9000000',
-                          ),
-                          validator: (value) {
-                            final raw = value?.trim() ?? '';
-                            if (raw.isEmpty) {
-                              return 'Vui long nhap luong thang.';
-                            }
-
-                            final parsed = double.tryParse(raw);
-                            if (parsed == null || parsed < 0) {
-                              return 'Luong thang khong hop le.';
-                            }
-
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 8),
-                        SwitchListTile.adaptive(
-                          value: isActive,
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text('Kich hoat phong ban'),
-                          subtitle: const Text(
-                            'Tat phong ban chi khi khong con su dung cho quy trinh cham cong.',
-                          ),
-                          onChanged: submitting
-                              ? null
-                              : (value) => setSheetState(() => isActive = value),
-                        ),
-                        const SizedBox(height: 18),
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton.icon(
-                            onPressed: submitting ? null : submit,
-                            icon: Icon(
-                              submitting
-                                  ? Icons.hourglass_top_rounded
-                                  : initial == null
-                                      ? Icons.add_business_rounded
-                                      : Icons.save_rounded,
-                            ),
-                            label: Text(
-                              submitting
-                                  ? 'Dang xu ly...'
-                                  : initial == null
-                                      ? 'Tao phong ban'
-                                      : 'Luu thay doi',
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Future<void> _confirmDeleteDepartment(AdminDepartmentSalary department) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Xoa phong ban?'),
-          content: Text(
-            'Ban muon xoa phong ban ${department.name}. Neu phong ban con nhan vien, he thong se tu choi thao tac nay.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Huy'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Xoa'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmed != true) {
-      return;
-    }
-
-    if (!mounted) {
-      return;
-    }
-
-    try {
-      final session = context.read<AppSession>();
-      final message = await session.adminPayrollRepository.deleteDepartmentSalary(
-        department.id,
-      );
-
-      AppToast.success('Xoa phong ban thanh cong', message: message);
-      await _bootstrap();
-    } on ApiException catch (error) {
-      AppToast.warning('Xoa phong ban that bai', message: error.message);
-    } catch (error) {
-      AppToast.error('Co loi xay ra', message: error.toString());
-    }
-  }
-
-  Future<void> _showPayrollDetails(AdminPayrollUser user) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      backgroundColor: Colors.white,
-      builder: (sheetContext) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${user.name} - Chi tiet luong',
-                  style: Theme.of(sheetContext).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '${user.employeeCode} | ${user.department ?? 'Chua co phong ban'}',
-                  style: const TextStyle(
-                    color: Color(0xFF64748B),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    StatusBadge(
-                      label: 'Cong thuc te ${_formatWorkUnits(user.totalWorkUnits)}',
-                      color: const Color(0xFF1D4ED8),
-                    ),
-                    StatusBadge(
-                      label: 'Cong tinh luong ${_formatWorkUnits(user.payableWorkUnits)}',
-                      color: const Color(0xFF0F766E),
-                    ),
-                    StatusBadge(
-                      label: _salaryStateLabel(user),
-                      color: _salaryStateColor(user.hasSalaryConfigured),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Luong thang phong ban: ${formatCurrency(user.monthlySalary)}',
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Luong / cong: ${formatCurrency(user.unitSalary, decimalDigits: 2)}',
-                        style: const TextStyle(color: Color(0xFF475569)),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Luong thuc nhan: ${formatCurrency(user.netSalary)}',
-                        style: const TextStyle(
-                          color: Color(0xFF0F172A),
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: ListView.separated(
-                    itemCount: user.dailyBreakdown.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 10),
-                    itemBuilder: (context, index) {
-                      final day = user.dailyBreakdown[index];
-                      final date = DateTime.tryParse(day.date);
-
-                      return Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    formatDate(date),
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ),
-                                StatusBadge(
-                                  label: _dayStatusLabel(day.status),
-                                  color: _dayStatusColor(day.status),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Cong ngay: ${_formatWorkUnits(day.workUnits)} | Moc hop le: ${day.validRecordCount}',
-                              style: const TextStyle(
-                                color: Color(0xFF475569),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            if (day.moments.isNotEmpty) ...[
-                              const SizedBox(height: 10),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: day.moments
-                                    .map(
-                                      (moment) => StatusBadge(
-                                        label:
-                                            '${attendanceTypeLabel(moment.checkType)} ${formatTime(moment.checkTime)}',
-                                        color: const Color(0xFF334155),
-                                      ),
-                                    )
-                                    .toList(growable: false),
-                              ),
-                            ],
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _departmentCard(AdminDepartmentSalary department) {
+  Widget _departmentSalaryCard(DepartmentOption department) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: Column(
@@ -709,68 +507,68 @@ class _AdminPayrollScreenState extends State<AdminPayrollScreen> {
                       department.name,
                       style: const TextStyle(
                         color: Color(0xFF0F172A),
-                        fontSize: 16,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Ma: ${department.code}',
-                      style: const TextStyle(color: Color(0xFF64748B)),
+                      department.code,
+                      style: const TextStyle(
+                        color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
+                    if ((department.description ?? '').trim().isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        department.description!.trim(),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF94A3B8),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
-              PopupMenuButton<String>(
-                onSelected: (value) {
-                  if (value == 'edit') {
-                    _showDepartmentForm(initial: department);
-                    return;
-                  }
-
-                  _confirmDeleteDepartment(department);
-                },
-                itemBuilder: (context) => const [
-                  PopupMenuItem<String>(
-                    value: 'edit',
-                    child: Text('Cap nhat'),
-                  ),
-                  PopupMenuItem<String>(
-                    value: 'delete',
-                    child: Text('Xoa'),
-                  ),
-                ],
+              IconButton.filledTonal(
+                onPressed: () => _editDepartmentSalary(department),
+                icon: const Icon(Icons.edit_rounded),
+                tooltip: 'Sua luong',
               ),
             ],
           ),
-          if ((department.description ?? '').trim().isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(
-              department.description!,
-              style: const TextStyle(
-                color: Color(0xFF475569),
-                height: 1.45,
-              ),
-            ),
-          ],
           const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          Text(
+            _formatMoney(department.monthlySalary),
+            style: const TextStyle(
+              color: Color(0xFF0F172A),
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
             children: [
-              StatusBadge(
-                label: formatCurrency(department.monthlySalary),
-                color: const Color(0xFF7C3AED),
+              Text(
+                department.isActive ? 'Dang hoat dong' : 'Tam ngung',
+                style: TextStyle(
+                  color: department.isActive
+                      ? const Color(0xFF166534)
+                      : const Color(0xFFB45309),
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-              StatusBadge(
-                label: '${department.userCount} nhan vien',
-                color: const Color(0xFF0F766E),
-              ),
-              StatusBadge(
-                label: department.isActive ? 'Dang hoat dong' : 'Tam dung',
-                color: department.isActive
-                    ? const Color(0xFF15803D)
-                    : const Color(0xFFB45309),
+              const SizedBox(width: 8),
+              const Text(
+                'Luong co dinh / thang',
+                style: TextStyle(
+                  color: Color(0xFF64748B),
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),
@@ -779,39 +577,52 @@ class _AdminPayrollScreenState extends State<AdminPayrollScreen> {
     );
   }
 
-  Widget _metricTile({
-    required String label,
-    required String value,
-    required Color color,
-  }) {
-    return Container(
-      constraints: const BoxConstraints(minWidth: 145),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
+  List<DepartmentOption> _activeDepartmentsForFilter() {
+    final items = _departments
+        .where((department) => department.isActive)
+        .toList(growable: false);
+
+    if (_departmentIdFilter == null) {
+      return items;
+    }
+
+    final selectedExists = items.any(
+      (department) => department.id == _departmentIdFilter,
+    );
+
+    if (selectedExists) {
+      return items;
+    }
+
+    final selected = _departments.where(
+      (department) => department.id == _departmentIdFilter,
+    );
+
+    return [
+      ...items,
+      ...selected,
+    ];
+  }
+
+  Widget _departmentManagementHeader() {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            'Admin co the tao them phong ban moi, cap nhat luong co dinh va dieu chinh trang thai ngay trong man nay.',
             style: const TextStyle(
               color: Color(0xFF64748B),
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: const TextStyle(
-              color: Color(0xFF0F172A),
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(width: 12),
+        FilledButton.icon(
+          onPressed: () => _openDepartmentSheet(),
+          icon: const Icon(Icons.add_rounded),
+          label: const Text('Tao phong ban'),
+        ),
+      ],
     );
   }
 
@@ -820,22 +631,23 @@ class _AdminPayrollScreenState extends State<AdminPayrollScreen> {
         (user.avatarUrl ?? '').isEmpty ? null : NetworkImage(user.avatarUrl!);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: user.hasSalaryConfigured
-              ? const Color(0xFFE2E8F0)
-              : const Color(0xFFFDE68A),
-        ),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0F0F172A),
+            blurRadius: 16,
+            offset: Offset(0, 10),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               CircleAvatar(
                 radius: 24,
@@ -847,8 +659,8 @@ class _AdminPayrollScreenState extends State<AdminPayrollScreen> {
                             ? '?'
                             : user.name.trim()[0].toUpperCase(),
                         style: const TextStyle(
-                          fontWeight: FontWeight.w800,
                           color: Color(0xFF1D4ED8),
+                          fontWeight: FontWeight.w800,
                         ),
                       )
                     : null,
@@ -867,79 +679,94 @@ class _AdminPayrollScreenState extends State<AdminPayrollScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${user.employeeCode} | ${user.department ?? 'Chua co phong ban'}',
-                      style: const TextStyle(color: Color(0xFF64748B)),
-                    ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        StatusBadge(
-                          label: _salaryStateLabel(user),
-                          color: _salaryStateColor(user.hasSalaryConfigured),
-                        ),
-                        StatusBadge(
-                          label: 'Cong ${_formatWorkUnits(user.totalWorkUnits)}',
-                          color: const Color(0xFF1D4ED8),
-                        ),
-                        StatusBadge(
-                          label: 'Tinh luong ${_formatWorkUnits(user.payableWorkUnits)}',
-                          color: const Color(0xFF0F766E),
-                        ),
-                      ],
+                      '${user.employeeCode} | ${user.department ?? 'Chua gan phong ban'}',
+                      style: const TextStyle(
+                        color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ],
                 ),
               ),
-              IconButton(
-                onPressed: () => _showPayrollDetails(user),
-                icon: const Icon(Icons.visibility_rounded),
-                tooltip: 'Chi tiet',
-              ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           Wrap(
-            spacing: 12,
-            runSpacing: 12,
+            spacing: 10,
+            runSpacing: 10,
             children: [
-              _metricTile(
-                label: 'Luong thang',
-                value: formatCurrency(user.monthlySalary),
-                color: const Color(0xFFF5F3FF),
-              ),
-              _metricTile(
-                label: 'Luong / cong',
-                value: formatCurrency(user.unitSalary, decimalDigits: 2),
-                color: const Color(0xFFEEF2FF),
-              ),
-              _metricTile(
-                label: 'Luong thuc nhan',
-                value: formatCurrency(user.netSalary),
-                color: const Color(0xFFECFDF5),
-              ),
+              _infoChip('Tong cong', _formatWorkUnits(user.totalWorkUnits)),
+              _infoChip('Cong tinh luong', _formatWorkUnits(user.paidWorkUnits)),
+              _infoChip('Luong phong ban', _formatMoney(user.monthlySalary)),
+              _infoChip('Luong / cong', _formatMoney(user.unitSalary)),
             ],
           ),
-          if (!user.hasSalaryConfigured) ...[
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFFBEB),
-                borderRadius: BorderRadius.circular(16),
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFFEEF2FF), Color(0xFFE0EAFF)],
               ),
-              child: const Text(
-                'Phong ban nay chua co luong mac dinh, vi vay bang luong hien tai dang la 0.',
-                style: TextStyle(
-                  color: Color(0xFFB45309),
-                  fontWeight: FontWeight.w700,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFC7D2FE)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Luong thuc nhan',
+                  style: TextStyle(
+                    color: Color(0xFF475569),
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
+                const SizedBox(height: 6),
+                Text(
+                  _formatMoney(user.salaryAmount),
+                  style: const TextStyle(
+                    color: Color(0xFF312E81),
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoChip(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: RichText(
+        text: TextSpan(
+          style: const TextStyle(
+            color: Color(0xFF64748B),
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+          children: [
+            TextSpan(text: '$label: '),
+            TextSpan(
+              text: value,
+              style: const TextStyle(
+                color: Color(0xFF0F172A),
+                fontWeight: FontWeight.w800,
               ),
             ),
           ],
-        ],
+        ),
       ),
     );
   }
@@ -955,7 +782,7 @@ class _AdminPayrollScreenState extends State<AdminPayrollScreen> {
         Expanded(
           child: OutlinedButton.icon(
             onPressed: page.currentPage > 1
-                ? () => _loadPayroll(page: page.currentPage - 1)
+                ? () => _loadOverview(page: page.currentPage - 1)
                 : null,
             icon: const Icon(Icons.chevron_left_rounded),
             label: const Text('Truoc'),
@@ -968,7 +795,7 @@ class _AdminPayrollScreenState extends State<AdminPayrollScreen> {
         Expanded(
           child: OutlinedButton.icon(
             onPressed: page.currentPage < page.lastPage
-                ? () => _loadPayroll(page: page.currentPage + 1)
+                ? () => _loadOverview(page: page.currentPage + 1)
                 : null,
             icon: const Icon(Icons.chevron_right_rounded),
             label: const Text('Sau'),
@@ -1000,12 +827,12 @@ class _AdminPayrollScreenState extends State<AdminPayrollScreen> {
               gradient: const LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Color(0xFF7C2D12), Color(0xFF9A3412)],
+                colors: [Color(0xFF9A3412), Color(0xFFEA580C)],
               ),
               borderRadius: BorderRadius.circular(34),
               boxShadow: const [
                 BoxShadow(
-                  color: Color(0x339A3412),
+                  color: Color(0x33EA580C),
                   blurRadius: 24,
                   offset: Offset(0, 16),
                 ),
@@ -1015,7 +842,7 @@ class _AdminPayrollScreenState extends State<AdminPayrollScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Bang luong theo cong',
+                  'Bang luong thang',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         color: Colors.white,
                         fontWeight: FontWeight.w800,
@@ -1023,7 +850,7 @@ class _AdminPayrollScreenState extends State<AdminPayrollScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Luong duoc tinh theo muc luong phong ban va tong cong thang. Du 25 cong nhan du luong, duoi 25 cong se tinh theo cong thuc te.',
+                  'Luong duoc tinh tu dong theo luong co dinh cua phong ban va tong cong hop le trong thang.',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Colors.white.withValues(alpha: 0.84),
                         height: 1.45,
@@ -1035,15 +862,15 @@ class _AdminPayrollScreenState extends State<AdminPayrollScreen> {
                   runSpacing: 12,
                   children: [
                     SizedBox(
-                      width: 150,
+                      width: 170,
                       child: _summaryStat(
                         label: 'Tong nhan vien',
                         value: '${overview?.summary.totalUsers ?? 0}',
-                        color: const Color(0xFFFDE68A),
+                        color: const Color(0xFFFFEDD5),
                       ),
                     ),
                     SizedBox(
-                      width: 150,
+                      width: 170,
                       child: _summaryStat(
                         label: 'Tong cong',
                         value: _formatWorkUnits(
@@ -1053,21 +880,23 @@ class _AdminPayrollScreenState extends State<AdminPayrollScreen> {
                       ),
                     ),
                     SizedBox(
-                      width: 150,
+                      width: 170,
                       child: _summaryStat(
-                        label: 'Du luong',
-                        value: '${overview?.summary.fullSalaryEmployeeCount ?? 0}',
+                        label: 'Tong luong phong ban',
+                        value: _formatMoney(
+                          overview?.summary.totalMonthlySalary ?? 0,
+                        ),
                         color: const Color(0xFFFDE68A),
                       ),
                     ),
                     SizedBox(
                       width: 170,
                       child: _summaryStat(
-                        label: 'Tong quy luong',
-                        value: formatCurrency(
-                          overview?.summary.totalNetSalary ?? 0,
+                        label: 'Luong thuc nhan',
+                        value: _formatMoney(
+                          overview?.summary.totalSalaryAmount ?? 0,
                         ),
-                        color: const Color(0xFFFFEDD5),
+                        color: const Color(0xFFFFF7ED),
                       ),
                     ),
                   ],
@@ -1077,29 +906,60 @@ class _AdminPayrollScreenState extends State<AdminPayrollScreen> {
           ),
           const SizedBox(height: 16),
           SectionCard(
-            title: 'Cau hinh luong phong ban',
+            title: 'Luong phong ban',
             subtitle:
-                'Admin co the CRUD phong ban va luong mac dinh de he thong tinh bang luong tu dong.',
+                'Admin cap nhat luong co dinh theo thang cho tung phong ban. Phan bonus hoac tang luong se duoc xu ly ngoai he thong.',
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: FilledButton.icon(
-                    onPressed: () => _showDepartmentForm(),
-                    icon: const Icon(Icons.add_business_rounded),
-                    label: const Text('Them phong ban'),
-                  ),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    if (constraints.maxWidth < 760) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Admin co the tao them phong ban moi, cap nhat luong co dinh va dieu chinh trang thai ngay trong man nay.',
+                            style: TextStyle(
+                              color: Color(0xFF64748B),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          FilledButton.icon(
+                            onPressed: () => _openDepartmentSheet(),
+                            icon: const Icon(Icons.add_rounded),
+                            label: const Text('Tao phong ban'),
+                          ),
+                        ],
+                      );
+                    }
+
+                    return _departmentManagementHeader();
+                  },
                 ),
                 const SizedBox(height: 14),
-                if (_departments.isEmpty)
-                  const Text('Chua co phong ban nao de cau hinh luong.')
-                else
-                  Column(
-                    children: _departments
-                        .map(_departmentCard)
-                        .toList(growable: false),
-                  ),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final cardWidth = constraints.maxWidth >= 1080
+                        ? (constraints.maxWidth - 24) / 4
+                        : constraints.maxWidth >= 760
+                            ? (constraints.maxWidth - 12) / 2
+                            : constraints.maxWidth;
+
+                    return Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: _departments
+                          .map(
+                            (department) => SizedBox(
+                              width: cardWidth,
+                              child: _departmentSalaryCard(department),
+                            ),
+                          )
+                          .toList(growable: false),
+                    );
+                  },
+                ),
               ],
             ),
           ),
@@ -1107,90 +967,152 @@ class _AdminPayrollScreenState extends State<AdminPayrollScreen> {
           SectionCard(
             title: 'Bo loc bang luong',
             subtitle:
-                'Chon thang can tinh luong, loc theo phong ban va xuat file CSV mo duoc bang Excel.',
+                'Chon thang can tinh luong, loc theo phong ban va tim nhanh nhan vien.',
             child: Column(
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _pickMonth,
-                        icon: const Icon(Icons.calendar_month_rounded),
-                        label: Text(_formatMonthLabel(_selectedMonth)),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: TextField(
-                        controller: _searchController,
-                        textInputAction: TextInputAction.search,
-                        onSubmitted: (_) => _loadPayroll(),
-                        decoration: InputDecoration(
-                          labelText: 'Tim nhan vien',
-                          hintText: 'VD: nv001, Nguyen Van A',
-                          prefixIcon: const Icon(Icons.search_rounded),
-                          suffixIcon: IconButton(
-                            onPressed: () => _loadPayroll(),
-                            icon: const Icon(Icons.arrow_forward_rounded),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isWide = constraints.maxWidth >= 700;
+
+                    if (!isWide) {
+                      return Column(
+                        children: [
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: _pickMonth,
+                              icon: const Icon(Icons.calendar_month_rounded),
+                              label: Text(_formatMonthLabel(_selectedMonth)),
+                            ),
                           ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Expanded(
-                      child: DropdownButtonFormField<int?>(
-                        value: _departmentIdFilter,
-                        decoration: const InputDecoration(
-                          labelText: 'Phong ban',
-                        ),
-                        items: [
-                          const DropdownMenuItem<int?>(
-                            value: null,
-                            child: Text('Tat ca phong ban'),
-                          ),
-                          ..._departments.map(
-                            (department) => DropdownMenuItem<int?>(
-                              value: department.id,
-                              child: Text(department.name),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: _searchController,
+                            textInputAction: TextInputAction.search,
+                            onSubmitted: (_) => _loadOverview(),
+                            decoration: InputDecoration(
+                              labelText: 'Tim nhan vien',
+                              hintText: 'VD: nv001, Nguyen Van A',
+                              prefixIcon: const Icon(Icons.search_rounded),
+                              suffixIcon: IconButton(
+                                onPressed: () => _loadOverview(),
+                                icon: const Icon(Icons.arrow_forward_rounded),
+                              ),
                             ),
                           ),
                         ],
-                        onChanged: (value) {
-                          setState(() => _departmentIdFilter = value);
-                          _loadPayroll();
-                        },
-                      ),
+                      );
+                    }
+
+                    return Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _pickMonth,
+                            icon: const Icon(Icons.calendar_month_rounded),
+                            label: Text(_formatMonthLabel(_selectedMonth)),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            controller: _searchController,
+                            textInputAction: TextInputAction.search,
+                            onSubmitted: (_) => _loadOverview(),
+                            decoration: InputDecoration(
+                              labelText: 'Tim nhan vien',
+                              hintText: 'VD: nv001, Nguyen Van A',
+                              prefixIcon: const Icon(Icons.search_rounded),
+                              suffixIcon: IconButton(
+                                onPressed: () => _loadOverview(),
+                                icon: const Icon(Icons.arrow_forward_rounded),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 14),
+                DropdownButtonFormField<int?>(
+                  value: _departmentIdFilter,
+                  decoration: const InputDecoration(labelText: 'Phong ban'),
+                  items: [
+                    const DropdownMenuItem<int?>(
+                      value: null,
+                      child: Text('Tat ca phong ban'),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: _exporting ? null : _exportPayroll,
-                        icon: Icon(
-                          _exporting
-                              ? Icons.hourglass_top_rounded
-                              : Icons.download_rounded,
-                        ),
-                        label: Text(
-                          _exporting ? 'Dang tao file...' : 'Xuat Excel',
-                        ),
+                    ..._activeDepartmentsForFilter().map(
+                      (department) => DropdownMenuItem<int?>(
+                        value: department.id,
+                        child: Text(department.name),
                       ),
                     ),
                   ],
+                  onChanged: (value) {
+                    setState(() => _departmentIdFilter = value);
+                    _loadOverview();
+                  },
                 ),
                 const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Quy tac: 25 cong nhan du luong. Muc luong thang hien lay truc tiep tu phong ban.',
-                    style: const TextStyle(
-                      color: Color(0xFF64748B),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isWide = constraints.maxWidth >= 760;
+
+                    if (!isWide) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Quy tac tinh luong: du 25 cong tro len se nhan du luong phong ban, duoi 25 cong se tinh theo cong thuc te.',
+                            style: TextStyle(
+                              color: Color(0xFF64748B),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          FilledButton.icon(
+                            onPressed: _exporting ? null : _exportCsv,
+                            icon: Icon(
+                              _exporting
+                                  ? Icons.hourglass_top_rounded
+                                  : Icons.download_rounded,
+                            ),
+                            label: Text(
+                              _exporting ? 'Dang tao file...' : 'Xuat CSV',
+                            ),
+                          ),
+                        ],
+                      );
+                    }
+
+                    return Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Quy tac tinh luong: du 25 cong tro len se nhan du luong phong ban, duoi 25 cong se tinh theo cong thuc te.',
+                            style: TextStyle(
+                              color: Color(0xFF64748B),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        FilledButton.icon(
+                          onPressed: _exporting ? null : _exportCsv,
+                          icon: Icon(
+                            _exporting
+                                ? Icons.hourglass_top_rounded
+                                : Icons.download_rounded,
+                          ),
+                          label: Text(
+                            _exporting ? 'Dang tao file...' : 'Xuat CSV',
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ],
             ),
@@ -1199,7 +1121,7 @@ class _AdminPayrollScreenState extends State<AdminPayrollScreen> {
             const SizedBox(height: 16),
             SectionCard(
               title: 'Can kiem tra lai',
-              subtitle: 'Khong tai duoc bang luong hien tai.',
+              subtitle: 'Khong tai duoc bang luong thang hien tai.',
               child: Row(
                 children: [
                   const Icon(
@@ -1220,14 +1142,19 @@ class _AdminPayrollScreenState extends State<AdminPayrollScreen> {
           SectionCard(
             title: 'Danh sach bang luong',
             subtitle:
-                'Bang luong duoc tinh tu dong theo tong cong thang va muc luong phong ban.',
+                'Muc luong duoc tinh tu dong tu tong cong hop le va luong co dinh cua phong ban.',
             child: payrollUsers.isEmpty
                 ? const Text(
                     'Khong co nhan vien phu hop voi bo loc hien tai.',
                   )
                 : Column(
                     children: payrollUsers
-                        .map(_payrollCard)
+                        .map(
+                          (user) => Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _payrollCard(user),
+                          ),
+                        )
                         .toList(growable: false),
                   ),
           ),

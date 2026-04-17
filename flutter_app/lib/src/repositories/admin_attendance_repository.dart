@@ -51,6 +51,23 @@ class AdminAttendanceRepository {
     return AdminMonthlyAttendanceOverview.fromJson(response);
   }
 
+  Future<List<int>> exportMonthlyOverviewCsv({
+    DateTime? month,
+    String? search,
+    int? departmentId,
+  }) {
+    final query = <String, String>{
+      if (month != null) 'month': _formatMonth(month),
+      if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
+      if (departmentId != null) 'department_id': '$departmentId',
+    };
+
+    return _client.getBytes(
+      '/admin/monthly-attendance/export',
+      queryParameters: query,
+    );
+  }
+
   String _formatDate(DateTime value) {
     final year = value.year.toString().padLeft(4, '0');
     final month = value.month.toString().padLeft(2, '0');

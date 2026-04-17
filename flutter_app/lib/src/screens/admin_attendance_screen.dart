@@ -378,6 +378,130 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
     );
   }
 
+  Widget _filterSection(AdminAttendanceOverview? overview) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compactFilters = constraints.maxWidth < 360;
+
+        final dateButton = SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _pickDate,
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            ),
+            icon: const Icon(Icons.calendar_today_rounded),
+            label: Text(formatDate(_selectedDate)),
+          ),
+        );
+
+        final searchField = TextField(
+          controller: _searchController,
+          textInputAction: TextInputAction.search,
+          onSubmitted: (_) => _loadOverview(),
+          decoration: InputDecoration(
+            isDense: true,
+            labelText: 'Tim nhan vien',
+            hintText: 'VD: nv001, System Admin',
+            prefixIcon: const Icon(Icons.search_rounded),
+            suffixIcon: IconButton(
+              onPressed: () => _loadOverview(),
+              icon: const Icon(Icons.arrow_forward_rounded),
+            ),
+          ),
+        );
+
+        final departmentDropdown = DropdownButtonFormField<int?>(
+          isDense: true,
+          value: _departmentIdFilter,
+          decoration: const InputDecoration(labelText: 'Phong ban'),
+          items: [
+            const DropdownMenuItem<int?>(
+              value: null,
+              child: Text('Tat ca phong ban'),
+            ),
+            ..._departments.map(
+              (department) => DropdownMenuItem<int?>(
+                value: department.id,
+                child: Text(department.name),
+              ),
+            ),
+          ],
+          onChanged: (value) {
+            setState(() => _departmentIdFilter = value);
+            _loadOverview();
+          },
+        );
+
+        final statusDropdown = DropdownButtonFormField<String?>(
+          isDense: true,
+          value: _statusFilter,
+          decoration: const InputDecoration(labelText: 'Tinh trang'),
+          items: const [
+            DropdownMenuItem<String?>(
+              value: null,
+              child: Text('Tat ca'),
+            ),
+            DropdownMenuItem<String?>(
+              value: 'not_checked_in',
+              child: Text('Chua cham'),
+            ),
+            DropdownMenuItem<String?>(
+              value: 'partial',
+              child: Text('Dang trong ngay'),
+            ),
+            DropdownMenuItem<String?>(
+              value: 'completed',
+              child: Text('Hoan thanh'),
+            ),
+          ],
+          onChanged: (value) {
+            setState(() => _statusFilter = value);
+            _loadOverview();
+          },
+        );
+
+        return Column(
+          children: [
+            if (compactFilters) ...[
+              dateButton,
+              const SizedBox(height: 12),
+              searchField,
+              const SizedBox(height: 12),
+              departmentDropdown,
+              const SizedBox(height: 12),
+              statusDropdown,
+            ] else ...[
+              Row(
+                children: [
+                  Expanded(child: dateButton),
+                  const SizedBox(width: 10),
+                  Expanded(child: searchField),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(child: departmentDropdown),
+                  const SizedBox(width: 12),
+                  Expanded(child: statusDropdown),
+                ],
+              ),
+            ],
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Moc hoan thanh hien tai: ${overview?.summary.expectedValidRecords ?? 4} ban ghi hop le trong ngay.',
+                style: const TextStyle(color: Color(0xFF64748B)),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading && _overview == null) {
@@ -476,106 +600,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
             title: 'Bo loc va che do xem',
             subtitle:
                 'Tim nhan vien theo ngay, phong ban va tinh trang cham cong.',
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _pickDate,
-                        icon: const Icon(Icons.calendar_today_rounded),
-                        label: Text(formatDate(_selectedDate)),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: TextField(
-                        controller: _searchController,
-                        textInputAction: TextInputAction.search,
-                        onSubmitted: (_) => _loadOverview(),
-                        decoration: InputDecoration(
-                          labelText: 'Tim nhan vien',
-                          hintText: 'VD: nv001, System Admin',
-                          prefixIcon: const Icon(Icons.search_rounded),
-                          suffixIcon: IconButton(
-                            onPressed: () => _loadOverview(),
-                            icon: const Icon(Icons.arrow_forward_rounded),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Expanded(
-                      child: DropdownButtonFormField<int?>(
-                        value: _departmentIdFilter,
-                        decoration: const InputDecoration(
-                          labelText: 'Phong ban',
-                        ),
-                        items: [
-                          const DropdownMenuItem<int?>(
-                            value: null,
-                            child: Text('Tat ca phong ban'),
-                          ),
-                          ..._departments.map(
-                            (department) => DropdownMenuItem<int?>(
-                              value: department.id,
-                              child: Text(department.name),
-                            ),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          setState(() => _departmentIdFilter = value);
-                          _loadOverview();
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: DropdownButtonFormField<String?>(
-                        value: _statusFilter,
-                        decoration: const InputDecoration(
-                          labelText: 'Tinh trang',
-                        ),
-                        items: const [
-                          DropdownMenuItem<String?>(
-                            value: null,
-                            child: Text('Tat ca'),
-                          ),
-                          DropdownMenuItem<String?>(
-                            value: 'not_checked_in',
-                            child: Text('Chua cham'),
-                          ),
-                          DropdownMenuItem<String?>(
-                            value: 'partial',
-                            child: Text('Dang trong ngay'),
-                          ),
-                          DropdownMenuItem<String?>(
-                            value: 'completed',
-                            child: Text('Hoan thanh'),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          setState(() => _statusFilter = value);
-                          _loadOverview();
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Moc hoan thanh hien tai: ${overview?.summary.expectedValidRecords ?? 4} ban ghi hop le trong ngay.',
-                    style: const TextStyle(color: Color(0xFF64748B)),
-                  ),
-                ),
-              ],
-            ),
+            child: _filterSection(overview),
           ),
           if (_errorMessage != null) ...[
             const SizedBox(height: 16),

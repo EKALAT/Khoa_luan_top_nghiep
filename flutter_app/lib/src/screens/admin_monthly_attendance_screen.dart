@@ -1,13 +1,16 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_session.dart';
 import '../core/network/api_exception.dart';
 import '../core/utils/display_utils.dart';
+import '../core/utils/file_download.dart';
 import '../models/admin_monthly_attendance_day.dart';
 import '../models/admin_monthly_attendance_overview.dart';
 import '../models/admin_monthly_attendance_user.dart';
 import '../models/department_option.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/section_card.dart';
 import '../widgets/status_badge.dart';
 
@@ -28,6 +31,7 @@ class _AdminMonthlyAttendanceScreenState
   AdminMonthlyAttendanceOverview? _overview;
   List<DepartmentOption> _departments = const [];
   bool _loading = true;
+  bool _exporting = false;
   String? _errorMessage;
   DateTime _selectedMonth = DateTime.now();
   int? _departmentIdFilter;
@@ -135,6 +139,56 @@ class _AdminMonthlyAttendanceScreenState
 
     setState(() => _selectedMonth = DateTime(picked.year, picked.month));
     await _loadOverview();
+  }
+
+  Future<void> _exportCsv() async {
+    if (_exporting) {
+      return;
+    }
+
+    if (!kIsWeb) {
+      AppToast.info(
+        'Nen test tren web',
+        message:
+            'Chuc nang xuat bang cong hien duoc toi uu de tai file truc tiep tren Flutter Web.',
+      );
+      return;
+    }
+
+    setState(() => _exporting = true);
+
+    try {
+      final session = context.read<AppSession>();
+      final bytes = await session.adminAttendanceRepository.exportMonthlyOverviewCsv(
+        month: _selectedMonth,
+        search: _searchController.text,
+        departmentId: _departmentIdFilter,
+      );
+
+      final filename =
+          'bang_cong_${_selectedMonth.year}_${_selectedMonth.month.toString().padLeft(2, '0')}.csv';
+
+      await downloadFile(
+        bytes: bytes,
+        filename: filename,
+        mimeType: 'text/csv;charset=utf-8',
+      );
+
+      AppToast.success(
+        'Xuat bang cong thanh cong',
+        message: 'Trinh duyet dang tai file $filename',
+      );
+    } on ApiException catch (error) {
+      AppToast.warning('Xuat bang cong that bai', message: error.message);
+    } on UnsupportedError catch (error) {
+      AppToast.warning('Khong the tai file', message: error.message);
+    } catch (error) {
+      AppToast.error('Co loi xay ra', message: error.toString());
+    } finally {
+      if (mounted) {
+        setState(() => _exporting = false);
+      }
+    }
   }
 
   String _formatMonthLabel(DateTime value) {
@@ -756,6 +810,21 @@ class _AdminMonthlyAttendanceScreenState
                     setState(() => _departmentIdFilter = value);
                     _loadOverview();
                   },
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: FilledButton.icon(
+                    onPressed: _exporting ? null : _exportCsv,
+                    icon: Icon(
+                      _exporting
+                          ? Icons.hourglass_top_rounded
+                          : Icons.download_rounded,
+                    ),
+                    label: Text(
+                      _exporting ? 'Dang tao file...' : 'Xuat CSV',
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Align(

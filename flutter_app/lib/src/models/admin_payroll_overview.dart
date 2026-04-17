@@ -26,36 +26,33 @@ class AdminPayrollSummary {
   const AdminPayrollSummary({
     required this.month,
     required this.monthLabel,
-    this.rangeEnd,
-    required this.standardWorkDays,
+    required this.standardWorkUnits,
     required this.totalUsers,
     required this.totalWorkUnits,
-    required this.totalNetSalary,
-    required this.fullSalaryEmployeeCount,
-    required this.withoutSalaryConfigCount,
+    required this.totalPaidWorkUnits,
+    required this.totalMonthlySalary,
+    required this.totalSalaryAmount,
   });
 
   final String month;
   final String monthLabel;
-  final String? rangeEnd;
-  final double standardWorkDays;
+  final double standardWorkUnits;
   final int totalUsers;
   final double totalWorkUnits;
-  final double totalNetSalary;
-  final int fullSalaryEmployeeCount;
-  final int withoutSalaryConfigCount;
+  final double totalPaidWorkUnits;
+  final double totalMonthlySalary;
+  final double totalSalaryAmount;
 
   factory AdminPayrollSummary.fromJson(Map<String, dynamic> json) {
     return AdminPayrollSummary(
       month: asString(json['month']) ?? '',
       monthLabel: asString(json['month_label']) ?? '',
-      rangeEnd: asString(json['range_end']),
-      standardWorkDays: asDouble(json['standard_work_days']) ?? 25,
+      standardWorkUnits: asDouble(json['standard_work_units']) ?? 25,
       totalUsers: asInt(json['total_users']) ?? 0,
       totalWorkUnits: asDouble(json['total_work_units']) ?? 0,
-      totalNetSalary: asDouble(json['total_net_salary']) ?? 0,
-      fullSalaryEmployeeCount: asInt(json['full_salary_employee_count']) ?? 0,
-      withoutSalaryConfigCount: asInt(json['without_salary_config_count']) ?? 0,
+      totalPaidWorkUnits: asDouble(json['total_paid_work_units']) ?? 0,
+      totalMonthlySalary: asDouble(json['total_monthly_salary']) ?? 0,
+      totalSalaryAmount: asDouble(json['total_salary_amount']) ?? 0,
     );
   }
 }

@@ -199,6 +199,26 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       return;
     }
 
+    try {
+      final session = context.read<AppSession>();
+      final latestDepartments = await session.metaRepository.fetchDepartments();
+
+      if (!mounted) return;
+
+      setState(() {
+        _departments = latestDepartments;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      AppToast.warning(
+        'Khong tai duoc phong ban moi nhat',
+        message: error.message,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      AppToast.error('Co loi xay ra', message: error.toString());
+    }
+
     final formKey = GlobalKey<FormState>();
     final employeeCodeController = TextEditingController(
       text: existing?.employeeCode ?? '',
@@ -219,6 +239,12 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     int? selectedDepartmentId = existing?.departmentId;
     bool isActive = existing?.isActive ?? true;
     bool isSubmitting = false;
+    final availableDepartments = _departments
+        .where(
+          (department) =>
+              department.isActive || department.id == selectedDepartmentId,
+        )
+        .toList(growable: false);
 
     await showModalBottomSheet<void>(
       context: context,
@@ -393,15 +419,15 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                           labelText: 'Phong ban',
                           prefixIcon: Icon(Icons.apartment_rounded),
                         ),
-                        items: [
-                          const DropdownMenuItem<int?>(
-                            value: null,
-                            child: Text('Khong gan phong ban'),
-                          ),
-                          ..._departments.map(
-                            (department) => DropdownMenuItem<int?>(
-                              value: department.id,
-                              child: Text(department.name),
+                          items: [
+                            const DropdownMenuItem<int?>(
+                              value: null,
+                              child: Text('Khong gan phong ban'),
+                            ),
+                            ...availableDepartments.map(
+                              (department) => DropdownMenuItem<int?>(
+                                value: department.id,
+                                child: Text(department.name),
                             ),
                           ),
                         ],

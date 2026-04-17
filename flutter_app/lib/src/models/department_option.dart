@@ -6,6 +6,7 @@ class DepartmentOption {
     required this.name,
     required this.code,
     this.description,
+    required this.monthlySalary,
     required this.isActive,
   });
 
@@ -13,6 +14,7 @@ class DepartmentOption {
   final String name;
   final String code;
   final String? description;
+  final double monthlySalary;
   final bool isActive;
 
   factory DepartmentOption.fromJson(Map<String, dynamic> json) {
@@ -21,6 +23,7 @@ class DepartmentOption {
       name: asString(json['name']) ?? '',
       code: asString(json['code']) ?? '',
       description: asString(json['description']),
+      monthlySalary: asDouble(json['monthly_salary']) ?? 0,
       isActive: asBool(json['is_active'], fallback: true),
     );
   }

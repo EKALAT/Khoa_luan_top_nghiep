@@ -360,22 +360,164 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
+  Widget _historyFilters() {
+    final clearDateButton =
+        _selectedDate == null
+            ? null
+            : IconButton.filledTonal(
+                onPressed: () {
+                  setState(() => _selectedDate = null);
+                  _loadRecords();
+                },
+                icon: const Icon(Icons.close_rounded),
+              );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compactFilters = constraints.maxWidth < 360;
+
+        final dateButton = SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _pickDate,
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            ),
+            icon: const Icon(Icons.calendar_today_rounded),
+            label: Text(
+              _selectedDate == null ? 'Loc theo ngay' : formatDate(_selectedDate),
+            ),
+          ),
+        );
+
+        final statusDropdown = DropdownButtonFormField<String?>(
+          isDense: true,
+          value: _statusFilter,
+          decoration: const InputDecoration(labelText: 'Trang thai'),
+          items: const [
+            DropdownMenuItem<String?>(
+              value: null,
+              child: Text('Tat ca'),
+            ),
+            DropdownMenuItem<String?>(
+              value: 'valid',
+              child: Text('Hop le'),
+            ),
+            DropdownMenuItem<String?>(
+              value: 'invalid',
+              child: Text('Khong hop le'),
+            ),
+          ],
+          onChanged: (value) {
+            setState(() => _statusFilter = value);
+            _loadRecords();
+          },
+        );
+
+        final checkTypeDropdown = DropdownButtonFormField<String?>(
+          isDense: true,
+          value: _checkTypeFilter,
+          decoration: const InputDecoration(labelText: 'Moc cham cong'),
+          items: const [
+            DropdownMenuItem<String?>(
+              value: null,
+              child: Text('Tat ca'),
+            ),
+            DropdownMenuItem<String?>(
+              value: 'morning_check_in',
+              child: Text('Vao ca sang'),
+            ),
+            DropdownMenuItem<String?>(
+              value: 'morning_check_out',
+              child: Text('Ra ca sang'),
+            ),
+            DropdownMenuItem<String?>(
+              value: 'afternoon_check_in',
+              child: Text('Vao ca chieu'),
+            ),
+            DropdownMenuItem<String?>(
+              value: 'afternoon_check_out',
+              child: Text('Ra ca chieu'),
+            ),
+          ],
+          onChanged: (value) {
+            setState(() => _checkTypeFilter = value);
+            _loadRecords();
+          },
+        );
+
+        return Column(
+          children: [
+            if (compactFilters) ...[
+              if (clearDateButton == null)
+                dateButton
+              else
+                Row(
+                  children: [
+                    Expanded(child: dateButton),
+                    const SizedBox(width: 10),
+                    clearDateButton,
+                  ],
+                ),
+              const SizedBox(height: 12),
+              statusDropdown,
+              const SizedBox(height: 12),
+              checkTypeDropdown,
+            ] else ...[
+              Row(
+                children: [
+                  Expanded(child: dateButton),
+                  if (clearDateButton != null) ...[
+                    const SizedBox(width: 10),
+                    clearDateButton,
+                  ],
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(child: statusDropdown),
+                  const SizedBox(width: 12),
+                  Expanded(child: checkTypeDropdown),
+                ],
+              ),
+            ],
+            const SizedBox(height: 16),
+            TabBar(
+              labelPadding: EdgeInsets.symmetric(
+                horizontal: compactFilters ? 8 : 16,
+              ),
+              tabs: const [Tab(text: 'Ban ghi'), Tab(text: 'Log')],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final recordCount = _recordsPage?.data.length ?? 0;
     final logCount = _logsPage?.data.length ?? 0;
+    final compactTopSection = MediaQuery.sizeOf(context).height < 780;
+
     return SafeArea(
       child: DefaultTabController(
         length: 2,
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                compactTopSection ? 8 : 12,
+                16,
+                0,
+              ),
               child: Column(
                 children: [
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(24),
+                    padding: EdgeInsets.all(compactTopSection ? 20 : 24),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
                         begin: Alignment.topLeft,
@@ -413,10 +555,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             height: 1.45,
                           ),
                         ),
-                        const SizedBox(height: 16),
+                        SizedBox(height: compactTopSection ? 12 : 16),
                         Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
+                          spacing: compactTopSection ? 8 : 10,
+                          runSpacing: compactTopSection ? 8 : 10,
                           children: [
                             StatusBadge(
                               label: '$recordCount ban ghi tren trang',
@@ -431,115 +573,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  SizedBox(height: compactTopSection ? 12 : 16),
                   SectionCard(
                     title: 'Bo loc va che do xem',
                     subtitle:
                         'Loc nhanh theo ngay, trang thai va moc cham cong.',
-                    child: Column(
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: OutlinedButton.icon(
-                                onPressed: _pickDate,
-                                icon: const Icon(Icons.calendar_today_rounded),
-                                label: Text(
-                                  _selectedDate == null
-                                      ? 'Loc theo ngay'
-                                      : formatDate(_selectedDate),
-                                ),
-                              ),
-                            ),
-                            if (_selectedDate != null) ...[
-                              const SizedBox(width: 10),
-                              IconButton.filledTonal(
-                                onPressed: () {
-                                  setState(() => _selectedDate = null);
-                                  _loadRecords();
-                                },
-                                icon: const Icon(Icons.close_rounded),
-                              ),
-                            ],
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: DropdownButtonFormField<String?>(
-                                value: _statusFilter,
-                                decoration: const InputDecoration(
-                                  labelText: 'Trang thai',
-                                ),
-                                items: const [
-                                  DropdownMenuItem<String?>(
-                                    value: null,
-                                    child: Text('Tat ca'),
-                                  ),
-                                  DropdownMenuItem<String?>(
-                                    value: 'valid',
-                                    child: Text('Hop le'),
-                                  ),
-                                  DropdownMenuItem<String?>(
-                                    value: 'invalid',
-                                    child: Text('Khong hop le'),
-                                  ),
-                                ],
-                                onChanged: (value) {
-                                  setState(() => _statusFilter = value);
-                                  _loadRecords();
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: DropdownButtonFormField<String?>(
-                                value: _checkTypeFilter,
-                                decoration: const InputDecoration(
-                                  labelText: 'Moc cham cong',
-                                ),
-                                items: const [
-                                  DropdownMenuItem<String?>(
-                                    value: null,
-                                    child: Text('Tat ca'),
-                                  ),
-                                  DropdownMenuItem<String?>(
-                                    value: 'morning_check_in',
-                                    child: Text('Vao ca sang'),
-                                  ),
-                                  DropdownMenuItem<String?>(
-                                    value: 'morning_check_out',
-                                    child: Text('Ra ca sang'),
-                                  ),
-                                  DropdownMenuItem<String?>(
-                                    value: 'afternoon_check_in',
-                                    child: Text('Vao ca chieu'),
-                                  ),
-                                  DropdownMenuItem<String?>(
-                                    value: 'afternoon_check_out',
-                                    child: Text('Ra ca chieu'),
-                                  ),
-                                ],
-                                onChanged: (value) {
-                                  setState(() => _checkTypeFilter = value);
-                                  _loadRecords();
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        const TabBar(
-                          tabs: [Tab(text: 'Ban ghi'), Tab(text: 'Log')],
-                        ),
-                      ],
-                    ),
+                    child: _historyFilters(),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: compactTopSection ? 12 : 16),
             Expanded(
               child: TabBarView(
                 children: [

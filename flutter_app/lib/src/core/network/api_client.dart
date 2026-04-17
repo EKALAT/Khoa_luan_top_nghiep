@@ -51,6 +51,25 @@ class ApiClient {
     return _decodeResponse(response);
   }
 
+  Future<List<int>> getBytes(
+    String path, {
+    Map<String, String>? queryParameters,
+    bool authenticated = true,
+  }) async {
+    final response = await _send(
+      () => _httpClient.get(
+        _buildUri(path, queryParameters),
+        headers: _buildHeaders(authenticated: authenticated),
+      ),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw ApiException.fromResponse(response.statusCode, response.body);
+    }
+
+    return response.bodyBytes;
+  }
+
   Future<Map<String, dynamic>> post(
     String path, {
     Map<String, dynamic>? body,

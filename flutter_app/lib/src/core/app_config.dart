@@ -1,8 +1,19 @@
+import 'package:flutter/foundation.dart';
+
 class AppConfig {
-  static const String defaultBaseUrl = String.fromEnvironment(
+  static const String _configuredBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://10.0.2.2:8000/api',
   );
+
+  static String get defaultBaseUrl {
+    if (_configuredBaseUrl.isNotEmpty) {
+      return _configuredBaseUrl;
+    }
+
+    return kIsWeb
+        ? 'http://localhost:8000/api'
+        : 'http://10.0.2.2:8000/api';
+  }
 
   static String normalizeBaseUrl(String rawValue) {
     final trimmed = rawValue.trim();

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'admin_payroll_screen.dart';
 import '../widgets/section_card.dart';
 import 'admin_attendance_screen.dart';
 import 'admin_monthly_attendance_screen.dart';
@@ -12,7 +13,7 @@ class AdminPanelScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       child: DefaultTabController(
-        length: 3,
+        length: 4,
         child: Column(
           children: [
             Padding(
@@ -64,11 +65,12 @@ class AdminPanelScreen extends StatelessWidget {
                   SectionCard(
                     title: 'Che do quan tri',
                     subtitle:
-                        'Chuyen nhanh giua cham cong theo ngay, bang cong thang va quan ly tai khoan.',
+                        'Chuyen nhanh giua cham cong theo ngay, bang cong thang, bang luong va quan ly tai khoan.',
                     child: const TabBar(
                       tabs: [
                         Tab(text: 'Trong ngay'),
                         Tab(text: 'Bang cong'),
+                        Tab(text: 'Bang luong'),
                         Tab(text: 'Tai khoan'),
                       ],
                     ),
@@ -82,6 +84,7 @@ class AdminPanelScreen extends StatelessWidget {
                 children: [
                   AdminAttendanceScreen(embedded: true),
                   AdminMonthlyAttendanceScreen(embedded: true),
+                  AdminPayrollScreen(embedded: true),
                   AdminUsersScreen(embedded: true),
                 ],
               ),

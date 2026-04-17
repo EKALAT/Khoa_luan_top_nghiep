@@ -7,6 +7,8 @@ import 'core/storage/session_storage.dart';
 import 'models/app_user.dart';
 import 'repositories/attendance_repository.dart';
 import 'repositories/admin_attendance_repository.dart';
+import 'repositories/admin_department_repository.dart';
+import 'repositories/admin_payroll_repository.dart';
 import 'repositories/admin_user_repository.dart';
 import 'repositories/auth_repository.dart';
 import 'repositories/meta_repository.dart';
@@ -27,6 +29,8 @@ class AppSession extends ChangeNotifier {
     authRepository = AuthRepository(_apiClient);
     attendanceRepository = AttendanceRepository(_apiClient);
     adminAttendanceRepository = AdminAttendanceRepository(_apiClient);
+    adminDepartmentRepository = AdminDepartmentRepository(_apiClient);
+    adminPayrollRepository = AdminPayrollRepository(_apiClient);
     adminUserRepository = AdminUserRepository(_apiClient);
     metaRepository = MetaRepository(_apiClient);
     profileRepository = ProfileRepository(_apiClient);
@@ -38,6 +42,8 @@ class AppSession extends ChangeNotifier {
   late final AuthRepository authRepository;
   late final AttendanceRepository attendanceRepository;
   late final AdminAttendanceRepository adminAttendanceRepository;
+  late final AdminDepartmentRepository adminDepartmentRepository;
+  late final AdminPayrollRepository adminPayrollRepository;
   late final AdminUserRepository adminUserRepository;
   late final MetaRepository metaRepository;
   late final ProfileRepository profileRepository;

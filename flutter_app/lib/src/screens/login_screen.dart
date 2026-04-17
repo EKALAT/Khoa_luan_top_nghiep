@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -92,9 +93,11 @@ class _LoginScreenState extends State<LoginScreen> {
               TextField(
                 controller: controller,
                 autofocus: true,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Base URL',
-                  hintText: 'http://10.0.2.2:8000/api',
+                  hintText: kIsWeb
+                      ? 'http://localhost:8000'
+                      : 'http://10.0.2.2:8000',
                 ),
               ),
               const SizedBox(height: 16),
@@ -115,7 +118,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'Android Emulator dung http://10.0.2.2:8000. May that nen dung public URL hoac IP cung mang.',
+                        'Flutter Web/Chrome tren cung may dung http://localhost:8000. Android Emulator dung http://10.0.2.2:8000. Chi dung ngrok khi test tu thiet bi ben ngoai.',
                         style: const TextStyle(
                           color: Color(0xFF475569),
                           height: 1.4,
