@@ -88,7 +88,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return null;
     }
 
-    return position.accuracy <= 20;
+    return position.accuracy <= 100;
   }
 
   String get _nextActionHint {
@@ -872,7 +872,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                'Do chinh xac GPS: ${formatMeters(_lastPosition!.accuracy)} (${_passesAccuracyRule == true ? 'Dat rule <= 20 m' : 'Chua dat rule <= 20 m'})',
+                                'Do chinh xac GPS: ${formatMeters(_lastPosition!.accuracy)} (${_passesAccuracyRule == true ? 'Dat rule <= 100 m' : 'Chua dat rule <= 100 m'})',
                               ),
                               if (selectedLocation != null &&
                                   _distanceToSelectedLocationM != null) ...[
