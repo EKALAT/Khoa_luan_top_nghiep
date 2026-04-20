@@ -145,86 +145,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Widget _recordTile(AttendanceRecord record) {
     final color = _statusColor(record.status);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Icon(
-              record.status == 'valid'
-                  ? Icons.task_alt_rounded
-                  : Icons.warning_amber_rounded,
-              color: color,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        attendanceTypeLabel(record.checkType),
-                        style: const TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    StatusBadge(
-                      label: statusLabel(record.status),
-                      color: color,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '${formatDate(record.checkDate)} | ${formatTime(record.checkTime)}',
-                  style: const TextStyle(color: Color(0xFF64748B)),
-                ),
-                if (record.workLocation != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    record.workLocation!.name,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                ],
-                const SizedBox(height: 4),
-                Text(
-                  'Khoang cach ${formatMeters(record.distanceM)} | GPS ${formatMeters(record.accuracyM)}',
-                  style: const TextStyle(color: Color(0xFF64748B)),
-                ),
-                if ((record.reason ?? '').isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    reasonLabel(record.reason),
-                    style: const TextStyle(color: Color(0xFFB45309)),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
+    final actorName = _actorName(
+      employeeName: record.employeeName,
+      fallback: 'Nhan vien',
     );
-  }
+    final actorCode = _actorCode(employeeCode: record.employeeCode);
+    final actorDepartment = _actorDepartment(
+      employeeDepartment: record.employeeDepartment,
+    );
+    final avatarUrl = _actorAvatarUrl(
+      employeeAvatarUrl: record.employeeAvatarUrl,
+    );
 
-  Widget _logTile(AttendanceLog log) {
-    final color = _statusColor(log.result);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -236,22 +168,126 @@ class _HistoryScreenState extends State<HistoryScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _actorHeader(
+            name: actorName,
+            employeeCode: actorCode,
+            department: actorDepartment,
+            avatarUrl: avatarUrl,
+            badge: StatusBadge(
+              label: statusLabel(record.status),
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(
+                  record.status == 'valid'
+                      ? Icons.task_alt_rounded
+                      : Icons.warning_amber_rounded,
+                  color: color,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      attendanceTypeLabel(record.checkType),
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${formatDate(record.checkDate)} | ${formatTime(record.checkTime)}',
+                      style: const TextStyle(color: Color(0xFF64748B)),
+                    ),
+                    if (record.workLocation != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        record.workLocation!.name,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                    const SizedBox(height: 4),
+                    Text(
+                      'Khoang cach ${formatMeters(record.distanceM)} | GPS ${formatMeters(record.accuracyM)}',
+                      style: const TextStyle(color: Color(0xFF64748B)),
+                    ),
+                    if ((record.reason ?? '').isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        reasonLabel(record.reason),
+                        style: const TextStyle(color: Color(0xFFB45309)),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _logTile(AttendanceLog log) {
+    final color = _statusColor(log.result);
+    final actorName = _actorName(
+      employeeName: log.employeeName,
+      fallback: 'Nhan vien',
+    );
+    final actorCode = _actorCode(employeeCode: log.employeeCode);
+    final actorDepartment = _actorDepartment(
+      employeeDepartment: log.employeeDepartment,
+    );
+    final avatarUrl = _actorAvatarUrl(
+      employeeAvatarUrl: log.employeeAvatarUrl,
+    );
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _actorHeader(
+            name: actorName,
+            employeeCode: actorCode,
+            department: actorDepartment,
+            avatarUrl: avatarUrl,
+            badge: StatusBadge(label: statusLabel(log.result), color: color),
+          ),
+          const SizedBox(height: 14),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: Text(
-                  formatDateTime(log.capturedAt),
+                  log.attendanceRecord == null
+                      ? formatDateTime(log.capturedAt)
+                      : '${attendanceTypeLabel(log.attendanceRecord!.checkType)} | ${formatDateTime(log.capturedAt)}',
                   style: const TextStyle(fontWeight: FontWeight.w800),
                 ),
               ),
-              const SizedBox(width: 12),
-              StatusBadge(label: statusLabel(log.result), color: color),
             ],
           ),
           const SizedBox(height: 10),
           Text(
-            'GPS ${log.lat.toStringAsFixed(5)}, ${log.lng.toStringAsFixed(5)} | ${formatMeters(log.accuracyM)}',
+              'GPS ${log.lat.toStringAsFixed(5)}, ${log.lng.toStringAsFixed(5)} | ${formatMeters(log.accuracyM)}',
             style: const TextStyle(color: Color(0xFF64748B)),
           ),
           if ((log.networkInfo ?? '').isNotEmpty) ...[
@@ -277,6 +313,105 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ],
         ],
       ),
+      );
+  }
+
+  String _actorName({String? employeeName, required String fallback}) {
+    if ((employeeName ?? '').trim().isNotEmpty) {
+      return employeeName!.trim();
+    }
+
+    final currentUser = context.read<AppSession>().user;
+    final fallbackName = (currentUser?.name ?? '').trim();
+    return fallbackName.isNotEmpty ? fallbackName : fallback;
+  }
+
+  String? _actorCode({String? employeeCode}) {
+    if ((employeeCode ?? '').trim().isNotEmpty) {
+      return employeeCode!.trim();
+    }
+
+    final currentUser = context.read<AppSession>().user;
+    final fallbackCode = (currentUser?.employeeCode ?? '').trim();
+    return fallbackCode.isEmpty ? null : fallbackCode;
+  }
+
+  String? _actorDepartment({String? employeeDepartment}) {
+    if ((employeeDepartment ?? '').trim().isNotEmpty) {
+      return employeeDepartment!.trim();
+    }
+
+    final currentUser = context.read<AppSession>().user;
+    final fallbackDepartment = (currentUser?.department ?? '').trim();
+    return fallbackDepartment.isEmpty ? null : fallbackDepartment;
+  }
+
+  String? _actorAvatarUrl({String? employeeAvatarUrl}) {
+    if ((employeeAvatarUrl ?? '').trim().isNotEmpty) {
+      return employeeAvatarUrl!.trim();
+    }
+
+    final currentUser = context.read<AppSession>().user;
+    final fallbackAvatar = (currentUser?.avatarUrl ?? '').trim();
+    return fallbackAvatar.isEmpty ? null : fallbackAvatar;
+  }
+
+  Widget _actorHeader({
+    required String name,
+    required String? employeeCode,
+    required String? department,
+    required String? avatarUrl,
+    required Widget badge,
+  }) {
+    final subtitleParts = <String>[
+      if ((employeeCode ?? '').trim().isNotEmpty) employeeCode!.trim(),
+      if ((department ?? '').trim().isNotEmpty) department!.trim(),
+    ];
+    final avatarProvider =
+        (avatarUrl ?? '').isEmpty ? null : NetworkImage(avatarUrl!);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        CircleAvatar(
+          radius: 23,
+          backgroundColor: const Color(0xFFDBEAFE),
+          backgroundImage: avatarProvider,
+          child: avatarProvider == null
+              ? Text(
+                  name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase(),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF1D4ED8),
+                  ),
+                )
+              : null,
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                name,
+                style: const TextStyle(
+                  color: Color(0xFF0F172A),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              if (subtitleParts.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  subtitleParts.join(' | '),
+                  style: const TextStyle(color: Color(0xFF64748B)),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        badge,
+      ],
     );
   }
 
@@ -497,6 +632,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final sessionUser = context.watch<AppSession>().user;
+    final isAdmin = sessionUser?.roleCode == 'admin';
     final recordCount = _recordsPage?.data.length ?? 0;
     final logCount = _logsPage?.data.length ?? 0;
     final compactTopSection = MediaQuery.sizeOf(context).height < 780;
@@ -547,7 +684,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Theo doi ban ghi hop le, ban ghi can xem lai va log thiet bi trong cung mot giao dien.',
+                          isAdmin
+                              ? 'Theo doi lich su cham cong cua toan bo nhan vien, kem avatar, ten day du va log thiet bi trong cung mot giao dien.'
+                              : 'Theo doi ban ghi hop le, ban ghi can xem lai va log thiet bi trong cung mot giao dien.',
                           style: Theme.of(
                             context,
                           ).textTheme.bodyMedium?.copyWith(

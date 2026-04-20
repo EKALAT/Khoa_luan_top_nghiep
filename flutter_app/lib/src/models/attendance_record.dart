@@ -8,6 +8,11 @@ class AttendanceRecord {
     required this.workLocationId,
     required this.checkType,
     required this.status,
+    this.employeeCode,
+    this.employeeName,
+    this.employeeAvatarUrl,
+    this.employeeDepartment,
+    this.employeeRole,
     this.checkDate,
     this.checkTime,
     this.distanceM,
@@ -21,6 +26,11 @@ class AttendanceRecord {
   final int workLocationId;
   final String checkType;
   final String status;
+  final String? employeeCode;
+  final String? employeeName;
+  final String? employeeAvatarUrl;
+  final String? employeeDepartment;
+  final String? employeeRole;
   final DateTime? checkDate;
   final String? checkTime;
   final double? distanceM;
@@ -37,6 +47,11 @@ class AttendanceRecord {
       workLocationId: asInt(json['work_location_id']) ?? 0,
       checkType: asString(json['check_type']) ?? '',
       status: asString(json['status']) ?? '',
+      employeeCode: asString(json['employee_code']),
+      employeeName: asString(json['employee_name']),
+      employeeAvatarUrl: asString(json['employee_avatar_url']),
+      employeeDepartment: asString(json['employee_department']),
+      employeeRole: asString(json['employee_role']),
       checkDate: parseDateTime(json['check_date']),
       checkTime: asString(json['check_time']),
       distanceM: asDouble(json['distance_m']),
