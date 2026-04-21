@@ -6,6 +6,7 @@ import '../app_session.dart';
 import '../core/network/api_exception.dart';
 import '../core/utils/display_utils.dart';
 import '../models/user_profile.dart';
+import '../widgets/app_action_prompt.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/section_card.dart';
 import '../widgets/status_badge.dart';
@@ -240,24 +241,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _logout() async {
     final session = context.read<AppSession>();
-    final confirmed = await showDialog<bool>(
+    final confirmed = await AppActionPrompt.confirm(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Dang xuat'),
-          content: const Text('Ban co chac muon ket thuc phien lam viec nay?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Huy'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Dang xuat'),
-            ),
-          ],
-        );
-      },
+      icon: Icons.logout_rounded,
+      title: 'Dang xuat khoi he thong',
+      message: 'Ban co chac muon ket thuc phien lam viec hien tai khong?',
+      confirmLabel: 'Dang xuat',
+      note: 'Du lieu da dong bo se duoc giu nguyen trong he thong.',
     );
     if (confirmed != true) return;
     await session.logout();

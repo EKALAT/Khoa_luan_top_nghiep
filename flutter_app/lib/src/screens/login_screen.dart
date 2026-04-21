@@ -28,6 +28,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) {
+      AppToast.warning(
+        'Thong tin chua day du',
+        message: 'Hay nhap ma nhan vien va mat khau truoc khi dang nhap.',
+      );
       return;
     }
 
@@ -41,14 +45,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (success) {
       AppToast.success(
-        'Dang nhap thanh cong',
-        message: 'Chao mung ban quay tro lai voi Smart Attendance.',
+        'Xac thuc thanh cong',
+        message: 'Dang mo khong gian lam viec cua ban.',
       );
       return;
     }
 
-    AppToast.error(
-      'Dang nhap that bai',
+    AppToast.warning(
+      'Khong the dang nhap',
       message: session.errorMessage ?? 'Vui long kiem tra lai thong tin.',
     );
   }
@@ -341,7 +345,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     ),
                                     const SizedBox(height: 14),
                                     Text(
-                                      'He thong xac thuc GPS, geofence va network truoc khi ghi nhan du lieu cham cong.',
+                                      'He thong doi chieu GPS, geofence va khung gio truoc khi ghi nhan du lieu cham cong.',
                                       style: theme.textTheme.titleMedium
                                           ?.copyWith(
                                             color: Colors.white.withValues(
@@ -373,8 +377,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                 foreground: Colors.white,
                               ),
                               _statusChip(
-                                icon: Icons.wifi_tethering_rounded,
-                                label: 'Network kiem tra',
+                                icon: Icons.schedule_rounded,
+                                label: 'Khung gio doi chieu',
                                 color: const Color(0x1FDCFCE7),
                                 foreground: Colors.white,
                               ),
@@ -651,13 +655,21 @@ class _LoginScreenState extends State<LoginScreen> {
                                     onPressed:
                                         session.isBusy ? null : _submit,
                                     child: session.isBusy
-                                        ? const SizedBox(
-                                            width: 24,
-                                            height: 24,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2.5,
-                                              color: Colors.white,
-                                            ),
+                                        ? const Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              SizedBox(
+                                                width: 22,
+                                                height: 22,
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 2.5,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                              SizedBox(width: 12),
+                                              Text('Dang xac thuc...'),
+                                            ],
                                           )
                                         : const Text('Dang nhap he thong'),
                                   ),

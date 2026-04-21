@@ -27,6 +27,7 @@ class AdminMonthlyAttendanceScreen extends StatefulWidget {
 class _AdminMonthlyAttendanceScreenState
     extends State<AdminMonthlyAttendanceScreen> {
   final _searchController = TextEditingController();
+  final _matrixHorizontalController = ScrollController();
 
   AdminMonthlyAttendanceOverview? _overview;
   List<DepartmentOption> _departments = const [];
@@ -45,6 +46,7 @@ class _AdminMonthlyAttendanceScreenState
   @override
   void dispose() {
     _searchController.dispose();
+    _matrixHorizontalController.dispose();
     super.dispose();
   }
 
@@ -534,92 +536,124 @@ class _AdminMonthlyAttendanceScreenState
           ),
         ),
         const SizedBox(height: 14),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(22),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    _tableHeaderCell(
-                      width: nameWidth,
-                      label: 'Nhan vien',
-                      align: TextAlign.left,
-                    ),
-                    ...trackedDates.map(
-                      (date) => _tableHeaderCell(
-                        width: dayWidth,
-                        label: date.day.toString(),
-                      ),
-                    ),
-                    _tableHeaderCell(
-                      width: totalWidth,
-                      label: 'Tong',
-                    ),
-                  ],
+        Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ScrollbarTheme(
+                data: ScrollbarTheme.of(context).copyWith(
+                  thumbColor: WidgetStateProperty.all(const Color(0xFF94A3B8)),
+                  trackColor: WidgetStateProperty.all(
+                    const Color(0xFFE2E8F0),
+                  ),
+                  trackBorderColor: WidgetStateProperty.all(
+                    const Color(0xFFE2E8F0),
+                  ),
+                  thickness: WidgetStateProperty.all(10),
+                  radius: const Radius.circular(999),
+                  thumbVisibility: WidgetStateProperty.all(true),
+                  trackVisibility: WidgetStateProperty.all(true),
                 ),
-                ...users.map((user) {
-                  final breakdownByDate = {
-                    for (final day in user.dailyBreakdown) day.date: day,
-                  };
-
-                  return InkWell(
-                    onTap: () => _showMonthlyDetails(user),
-                    child: Row(
+                child: Scrollbar(
+                  controller: _matrixHorizontalController,
+                  thumbVisibility: true,
+                  trackVisibility: true,
+                  interactive: true,
+                  scrollbarOrientation: ScrollbarOrientation.bottom,
+                  child: SingleChildScrollView(
+                    controller: _matrixHorizontalController,
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.only(bottom: 14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _tableNameCell(user, nameWidth),
-                        ...trackedDates.map((date) {
-                          final key = date.toIso8601String().split('T').first;
-                          final day = breakdownByDate[key];
+                        Row(
+                          children: [
+                            _tableHeaderCell(
+                              width: nameWidth,
+                              label: 'Nhan vien',
+                              align: TextAlign.left,
+                            ),
+                            ...trackedDates.map(
+                              (date) => _tableHeaderCell(
+                                width: dayWidth,
+                                label: date.day.toString(),
+                              ),
+                            ),
+                            _tableHeaderCell(
+                              width: totalWidth,
+                              label: 'Tong',
+                            ),
+                          ],
+                        ),
+                        ...users.map((user) {
+                          final breakdownByDate = {
+                            for (final day in user.dailyBreakdown) day.date: day,
+                          };
 
-                          if (day == null || day.status == 'not_recorded') {
-                            return _tableValueCell(
-                              value: '',
-                              width: dayWidth,
-                              backgroundColor: Colors.white,
-                              foregroundColor: const Color(0xFF94A3B8),
-                              fontWeight: FontWeight.w600,
-                            );
-                          }
+                          return InkWell(
+                            onTap: () => _showMonthlyDetails(user),
+                            child: Row(
+                              children: [
+                                _tableNameCell(user, nameWidth),
+                                ...trackedDates.map((date) {
+                                  final key = date.toIso8601String().split('T').first;
+                                  final day = breakdownByDate[key];
 
-                          final backgroundColor = day.status == 'full_day'
-                              ? const Color(0xFFDCFCE7)
-                              : day.status == 'half_day'
-                                  ? const Color(0xFFDBEAFE)
-                                  : const Color(0xFFFEF3C7);
+                                  if (day == null || day.status == 'not_recorded') {
+                                    return _tableValueCell(
+                                      value: '',
+                                      width: dayWidth,
+                                      backgroundColor: Colors.white,
+                                      foregroundColor: const Color(0xFF94A3B8),
+                                      fontWeight: FontWeight.w600,
+                                    );
+                                  }
 
-                          final foregroundColor = day.status == 'full_day'
-                              ? const Color(0xFF166534)
-                              : day.status == 'half_day'
-                                  ? const Color(0xFF1D4ED8)
-                                  : const Color(0xFFB45309);
+                                  final backgroundColor = day.status == 'full_day'
+                                      ? const Color(0xFFDCFCE7)
+                                      : day.status == 'half_day'
+                                          ? const Color(0xFFDBEAFE)
+                                          : const Color(0xFFFEF3C7);
 
-                          final displayValue = day.workUnits > 0
-                              ? _formatWorkUnitsCell(day.workUnits)
-                              : '0.0';
+                                  final foregroundColor = day.status == 'full_day'
+                                      ? const Color(0xFF166534)
+                                      : day.status == 'half_day'
+                                          ? const Color(0xFF1D4ED8)
+                                          : const Color(0xFFB45309);
 
-                          return _tableValueCell(
-                            value: displayValue,
-                            width: dayWidth,
-                            backgroundColor: backgroundColor,
-                            foregroundColor: foregroundColor,
+                                  final displayValue = day.workUnits > 0
+                                      ? _formatWorkUnitsCell(day.workUnits)
+                                      : '0.0';
+
+                                  return _tableValueCell(
+                                    value: displayValue,
+                                    width: dayWidth,
+                                    backgroundColor: backgroundColor,
+                                    foregroundColor: foregroundColor,
+                                  );
+                                }),
+                                _tableValueCell(
+                                  value: _formatWorkUnitsCell(user.totalWorkUnits),
+                                  width: totalWidth,
+                                  backgroundColor: const Color(0xFFF8FAFC),
+                                  foregroundColor: const Color(0xFF0F172A),
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ],
+                            ),
                           );
                         }),
-                        _tableValueCell(
-                          value: _formatWorkUnitsCell(user.totalWorkUnits),
-                          width: totalWidth,
-                          backgroundColor: const Color(0xFFF8FAFC),
-                          foregroundColor: const Color(0xFF0F172A),
-                          fontWeight: FontWeight.w800,
-                        ),
                       ],
                     ),
-                  );
-                }),
-              ],
-            ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ],

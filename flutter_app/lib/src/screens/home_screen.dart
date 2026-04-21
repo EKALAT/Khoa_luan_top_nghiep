@@ -9,9 +9,9 @@ import '../app_session.dart';
 import '../core/network/api_exception.dart';
 import '../core/utils/display_utils.dart';
 import '../models/attendance_record.dart';
-import '../models/network_check_result.dart';
 import '../models/shift_rule.dart';
 import '../models/work_location.dart';
+import '../widgets/app_action_prompt.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/section_card.dart';
 import '../widgets/status_badge.dart';
@@ -32,11 +32,9 @@ class _HomeScreenState extends State<HomeScreen> {
   List<ShiftRule> _shiftRules = const [];
   List<AttendanceRecord> _todayRecords = const [];
   int? _selectedLocationId;
-  NetworkCheckResult? _networkCheck;
   Position? _lastPosition;
   DateTime? _lastPositionCapturedAt;
   String? _lastPositionError;
-  String _networkInfo = 'Chua kiem tra';
   DateTime _lastRefreshedAt = DateTime.now();
 
   WorkLocation? get _selectedLocation {
@@ -91,6 +89,13 @@ class _HomeScreenState extends State<HomeScreen> {
     return position.accuracy <= 100;
   }
 
+  bool get _isReadyForAttendance {
+    final inside = _isInsideSelectedLocation;
+    return _lastPosition != null &&
+        _passesAccuracyRule == true &&
+        (inside == null || inside);
+  }
+
   String get _nextActionHint {
     if (_todayRecords.isEmpty) {
       return 'San sang check-in';
@@ -125,12 +130,10 @@ class _HomeScreenState extends State<HomeScreen> {
       final attendanceFuture = session.attendanceRepository.fetchAttendance(
         date: DateTime.now(),
       );
-      final networkFuture = _readNetworkInfo();
 
       final locations = await locationsFuture;
       final shifts = await shiftsFuture;
       final records = await attendanceFuture;
-      final networkInfo = await networkFuture;
 
       if (!mounted) {
         return;
@@ -144,7 +147,6 @@ class _HomeScreenState extends State<HomeScreen> {
         _workLocations = locations;
         _shiftRules = shifts;
         _todayRecords = records.data;
-        _networkInfo = networkInfo;
         _selectedLocationId =
             hasSelectedLocation
                 ? _selectedLocationId
@@ -214,28 +216,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _lastPosition = position;
     _lastPositionCapturedAt = position.timestamp.toLocal();
     _lastPositionError = null;
-  }
-
-  Future<void> _tryCapturePositionSnapshot() async {
-    try {
-      final position = await _capturePosition();
-
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _rememberPosition(position);
-      });
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _lastPositionError = error.toString();
-      });
-    }
   }
 
   Future<void> _refreshPositionPreview() async {
@@ -312,67 +292,24 @@ class _HomeScreenState extends State<HomeScreen> {
         : const Color(0xFFEF4444);
   }
 
-  Future<void> _runNetworkCheck() async {
-    final location = _selectedLocation;
-    if (location == null) {
-      AppToast.warning(
-        'Chua co dia diem',
-        message: 'Hay chon mot dia diem cham cong truoc khi kiem tra mang.',
-      );
-      return;
-    }
+  Future<bool> _confirmAttendanceAction({
+    required bool isCheckIn,
+    required WorkLocation location,
+  }) {
+    final actionLabel = isCheckIn ? 'Check-in' : 'Check-out';
 
-    setState(() {
-      _isSubmitting = true;
-    });
-
-    try {
-      final session = context.read<AppSession>();
-      final networkInfo = await _readNetworkInfo();
-      await _tryCapturePositionSnapshot();
-      final result = await session.attendanceRepository.networkCheck(
-        workLocationId: location.id,
-        networkInfo: networkInfo,
-      );
-
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _networkInfo = networkInfo;
-        _networkCheck = result;
-      });
-
-      AppToast.info(
-        result.isAllowed ? 'Mang hop le' : 'Mang chua hop le',
-        message: result.message,
-      );
-    } on ApiException catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      if (error.payload.containsKey('data')) {
-        setState(() {
-          _networkCheck = NetworkCheckResult.fromJson(error.payload);
-        });
-      }
-
-      AppToast.warning('Kiem tra mang that bai', message: error.message);
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      AppToast.error('Co loi xay ra', message: error.toString());
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSubmitting = false;
-        });
-      }
-    }
+    return AppActionPrompt.confirm(
+      context: context,
+      icon: isCheckIn ? Icons.login_rounded : Icons.logout_rounded,
+      title: '$actionLabel tai ${location.name}',
+      message:
+          'He thong se lay GPS hien tai va doi chieu dia diem lam viec truoc khi ghi nhan moc cham cong.',
+      confirmLabel: actionLabel,
+      note:
+          'Ban kinh dang ap dung: ${location.radiusM} m. Nen cap nhat GPS truoc khi tiep tuc de ket qua on dinh hon.',
+      accentColor:
+          isCheckIn ? const Color(0xFF2563EB) : const Color(0xFF7C3AED),
+    );
   }
 
   Future<void> _submitAttendance({required bool isCheckIn}) async {
@@ -382,6 +319,14 @@ class _HomeScreenState extends State<HomeScreen> {
         'Chua co dia diem',
         message: 'Hay chon dia diem lam viec truoc khi cham cong.',
       );
+      return;
+    }
+
+    final confirmed = await _confirmAttendanceAction(
+      isCheckIn: isCheckIn,
+      location: location,
+    );
+    if (!confirmed) {
       return;
     }
 
@@ -426,29 +371,26 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      setState(() {
-        _networkInfo = networkInfo;
-      });
-
       await _loadDashboard(silent: true);
 
       if (!mounted) {
         return;
       }
 
-      AppToast.success(
-        isCheckIn ? 'Check-in thanh cong' : 'Check-out thanh cong',
+      await AppActionPrompt.showResultSheet(
+        context: context,
+        icon: isCheckIn ? Icons.task_alt_rounded : Icons.verified_rounded,
+        title: isCheckIn ? 'Check-in thanh cong' : 'Check-out thanh cong',
         message: result.message,
+        details: [
+          'Dia diem: ${location.name}',
+          'Thoi diem ghi nhan: ${formatDateTime(DateTime.now())}',
+          'Do chinh xac GPS: ${formatMeters(position.accuracy)}',
+        ],
       );
     } on ApiException catch (error) {
       if (!mounted) {
         return;
-      }
-
-      if (error.payload.containsKey('data')) {
-        setState(() {
-          _networkCheck = NetworkCheckResult.fromJson(error.payload);
-        });
       }
 
       AppToast.warning(
@@ -549,6 +491,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildAttendanceTile(AttendanceRecord record) {
+    final currentUser = context.read<AppSession>().user;
+    final showActor = currentUser?.roleCode == 'admin' &&
+        ((record.employeeName ?? '').trim().isNotEmpty ||
+            (record.employeeCode ?? '').trim().isNotEmpty);
+    final actorSeed = (record.employeeName ?? record.employeeCode ?? '').trim();
+    final avatarProvider = ((record.employeeAvatarUrl ?? '').trim().isEmpty)
+        ? null
+        : NetworkImage(record.employeeAvatarUrl!.trim());
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -556,60 +507,117 @@ class _HomeScreenState extends State<HomeScreen> {
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: _statusColor(record.status).withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Icon(
-              record.status == 'valid'
-                  ? Icons.check_circle_rounded
-                  : Icons.error_rounded,
-              color: _statusColor(record.status),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
+          if (showActor) ...[
+            Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        attendanceTypeLabel(record.checkType),
-                        style: const TextStyle(fontWeight: FontWeight.w800),
+                CircleAvatar(
+                  radius: 22,
+                  backgroundColor: const Color(0xFFDBEAFE),
+                  backgroundImage: avatarProvider,
+                  child: avatarProvider == null
+                      ? Text(
+                          actorSeed.isEmpty
+                              ? '?'
+                              : actorSeed[0].toUpperCase(),
+                          style: const TextStyle(
+                            color: Color(0xFF1D4ED8),
+                            fontWeight: FontWeight.w800,
+                          ),
+                        )
+                      : null,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        record.employeeName ?? 'Nhan vien',
+                        style: const TextStyle(
+                          color: Color(0xFF0F172A),
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
-                    ),
-                    StatusBadge(
-                      label: statusLabel(record.status),
-                      color: _statusColor(record.status),
-                    ),
-                  ],
+                      const SizedBox(height: 4),
+                      Text(
+                        [
+                          if ((record.employeeCode ?? '').trim().isNotEmpty)
+                            record.employeeCode!.trim(),
+                          if ((record.employeeDepartment ?? '').trim().isNotEmpty)
+                            record.employeeDepartment!.trim(),
+                        ].join(' | '),
+                        style: const TextStyle(
+                          color: Color(0xFF64748B),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  '${formatDate(record.checkDate)} | ${formatTime(record.checkTime)}',
-                ),
-                if (record.workLocation != null) ...[
-                  const SizedBox(height: 4),
-                  Text(record.workLocation!.name),
-                ],
-                const SizedBox(height: 4),
-                Text(
-                  'Khoang cach: ${formatMeters(record.distanceM)} | GPS: ${formatMeters(record.accuracyM)}',
-                ),
-                if ((record.reason ?? '').isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(reasonLabel(record.reason)),
-                ],
               ],
             ),
+            const SizedBox(height: 14),
+          ],
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: _statusColor(record.status).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(
+                  record.status == 'valid'
+                      ? Icons.check_circle_rounded
+                      : Icons.error_rounded,
+                  color: _statusColor(record.status),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            attendanceTypeLabel(record.checkType),
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                        StatusBadge(
+                          label: statusLabel(record.status),
+                          color: _statusColor(record.status),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${formatDate(record.checkDate)} | ${formatTime(record.checkTime)}',
+                    ),
+                    if (record.workLocation != null) ...[
+                      const SizedBox(height: 4),
+                      Text(record.workLocation!.name),
+                    ],
+                    const SizedBox(height: 4),
+                    Text(
+                      'Khoang cach: ${formatMeters(record.distanceM)} | GPS: ${formatMeters(record.accuracyM)}',
+                    ),
+                    if ((record.reason ?? '').isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(reasonLabel(record.reason)),
+                    ],
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -723,9 +731,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: _buildHeroStat(
-                          label: 'Ket noi hien tai',
-                          value: _networkInfo,
-                          icon: Icons.wifi_rounded,
+                          label: 'Ban kinh ap dung',
+                          value:
+                              selectedLocation != null
+                                  ? '${selectedLocation.radiusM} m'
+                                  : '--',
+                          icon: Icons.radar_rounded,
                         ),
                       ),
                     ],
@@ -821,7 +832,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 16),
             SectionCard(
               title: 'Hanh dong nhanh',
-              subtitle: 'Kiem tra mang va cham cong ngay tren mot cum thao tac',
+              subtitle: 'Lay GPS va ghi nhan check-in/check-out ngay tai day',
               child: Column(
                 children: [
                   Container(
@@ -838,7 +849,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           children: [
                             Expanded(
                               child: Text(
-                                'Ket noi hien tai: $_networkInfo',
+                                _lastPosition == null
+                                    ? 'Hay cap nhat GPS truoc khi cham cong'
+                                    : 'Trang thai doi chieu vi tri',
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w800,
                                 ),
@@ -846,15 +859,17 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                             StatusBadge(
                               label:
-                                  _networkCheck?.isAllowed == true
-                                      ? 'Hop le'
-                                      : (_networkCheck == null
-                                          ? 'Chua check'
-                                          : 'Can xem lai'),
+                                  _lastPosition == null
+                                      ? 'Chua co GPS'
+                                      : (_isReadyForAttendance
+                                          ? 'San sang cham cong'
+                                          : 'Can cap nhat lai'),
                               color:
-                                  _networkCheck?.isAllowed == true
-                                      ? const Color(0xFF10B981)
-                                      : const Color(0xFFEF4444),
+                                  _lastPosition == null
+                                      ? const Color(0xFFF59E0B)
+                                      : (_isReadyForAttendance
+                                          ? const Color(0xFF10B981)
+                                          : const Color(0xFFEF4444)),
                             ),
                           ],
                         ),
@@ -913,17 +928,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             style: const TextStyle(color: Color(0xFFB91C1C)),
                           ),
                         ],
-                        if (_networkCheck != null) ...[
-                          const SizedBox(height: 8),
-                          Text(_networkCheck!.message),
-                          if ((_networkCheck!.allowedNetwork ?? '')
-                              .isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              'Allowed network: ${_networkCheck!.allowedNetwork}',
-                            ),
-                          ],
-                        ],
                       ],
                     ),
                   ),
@@ -937,27 +941,16 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _isSubmitting ? null : _runNetworkCheck,
-                          icon: const Icon(Icons.wifi_find_rounded),
-                          label: const Text('Kiem tra mang'),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed:
-                              _isSubmitting || selectedLocation == null
-                                  ? null
-                                  : () => _submitAttendance(isCheckIn: true),
-                          icon: const Icon(Icons.login_rounded),
-                          label: const Text('Check-in'),
-                        ),
-                      ),
-                    ],
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed:
+                          _isSubmitting || selectedLocation == null
+                              ? null
+                              : () => _submitAttendance(isCheckIn: true),
+                      icon: const Icon(Icons.login_rounded),
+                      label: const Text('Check-in'),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   SizedBox(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'dart:async';
 
 import '../app_session.dart';
 import '../core/network/api_exception.dart';
@@ -8,6 +9,7 @@ import '../models/admin_attendance_moment.dart';
 import '../models/admin_attendance_overview.dart';
 import '../models/admin_attendance_user.dart';
 import '../models/department_option.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/section_card.dart';
 import '../widgets/status_badge.dart';
 
@@ -22,8 +24,10 @@ class AdminAttendanceScreen extends StatefulWidget {
 
 class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
   final _searchController = TextEditingController();
+  Timer? _refreshTimer;
 
   AdminAttendanceOverview? _overview;
+  _AdminAttendanceActivityEvent? _latestActivity;
   List<DepartmentOption> _departments = const [];
   bool _loading = true;
   String? _errorMessage;
@@ -34,11 +38,15 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrap());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _bootstrap();
+      _startAutoRefresh();
+    });
   }
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -101,8 +109,20 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
 
       if (!mounted) return;
 
+      final shouldNotify = silent && _shouldAutoNotify;
+      _AdminAttendanceActivityEvent? latestActivity;
+      if (shouldNotify && _overview != null) {
+        latestActivity = _emitAttendanceNotifications(
+          previous: _overview!,
+          next: overview,
+        );
+      }
+
       setState(() {
         _overview = overview;
+        if (latestActivity != null) {
+          _latestActivity = latestActivity;
+        }
         _loading = false;
       });
     } on ApiException catch (error) {
@@ -134,6 +154,85 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
 
     setState(() => _selectedDate = picked);
     await _loadOverview();
+  }
+
+  bool get _shouldAutoNotify {
+    final now = DateTime.now();
+    return _selectedDate.year == now.year &&
+        _selectedDate.month == now.month &&
+        _selectedDate.day == now.day;
+  }
+
+  void _startAutoRefresh() {
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+      if (!mounted || !_shouldAutoNotify || _loading) {
+        return;
+      }
+
+      final currentPage = _overview?.page.currentPage ?? 1;
+      _loadOverview(page: currentPage, silent: true);
+    });
+  }
+
+  _AdminAttendanceActivityEvent? _emitAttendanceNotifications({
+    required AdminAttendanceOverview previous,
+    required AdminAttendanceOverview next,
+  }) {
+    final previousById = {
+      for (final user in previous.page.data) user.id: user,
+    };
+    _AdminAttendanceActivityEvent? latestEvent;
+
+    for (final user in next.page.data) {
+      final previousUser = previousById[user.id];
+      if (previousUser == null) {
+        continue;
+      }
+
+      final changed =
+          user.validRecordCount != previousUser.validRecordCount ||
+          user.latestCheckType != previousUser.latestCheckType ||
+          user.latestCheckTime != previousUser.latestCheckTime;
+
+      if (!changed ||
+          (user.latestCheckType ?? '').trim().isEmpty ||
+          (user.latestCheckTime ?? '').trim().isEmpty) {
+        continue;
+      }
+
+      final latestType = user.latestCheckType!;
+      final isCheckOut = latestType.contains('out');
+      final title =
+          isCheckOut
+              ? 'Da co nhan vien check-out'
+              : 'Da co nhan vien den cong ty';
+      final message =
+          '${attendanceTypeLabel(latestType)} luc ${formatTime(user.latestCheckTime)}';
+
+      latestEvent = _AdminAttendanceActivityEvent(
+        title: title,
+        message: message,
+        type: isCheckOut ? AppToastType.warning : AppToastType.success,
+        name: user.name,
+        employeeCode: user.employeeCode,
+        department: user.department,
+        avatarUrl: user.avatarUrl,
+        happenedAt: DateTime.now(),
+      );
+
+      AppToast.activity(
+        type: isCheckOut ? AppToastType.warning : AppToastType.success,
+        title: title,
+        message: message,
+        avatarUrl: user.avatarUrl,
+        name: user.name,
+        employeeCode: user.employeeCode,
+        department: user.department,
+      );
+    }
+
+    return latestEvent;
   }
 
   String _attendanceStatusLabel(String value) {
@@ -225,6 +324,35 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
     );
   }
 
+  Widget _infoChip({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF0F172A),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _userCard(AdminAttendanceUser user) {
     final avatarProvider =
         (user.avatarUrl ?? '').isEmpty ? null : NetworkImage(user.avatarUrl!);
@@ -270,7 +398,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      user.employeeCode,
+                      '${user.employeeCode}${(user.role ?? '').trim().isNotEmpty ? ' | ${user.role}' : ''}',
                       style: const TextStyle(color: Color(0xFF64748B)),
                     ),
                     const SizedBox(height: 8),
@@ -295,16 +423,35 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
             ],
           ),
           const SizedBox(height: 14),
-          Text(
-            'Phong ban: ${user.department ?? 'Chua gan'}',
-            style: const TextStyle(color: Color(0xFF64748B)),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _infoChip(
+                icon: Icons.apartment_rounded,
+                label: user.department ?? 'Chua gan phong ban',
+                color: const Color(0xFFF8FAFC),
+              ),
+              if ((user.phone ?? '').trim().isNotEmpty)
+                _infoChip(
+                  icon: Icons.call_rounded,
+                  label: user.phone!.trim(),
+                  color: const Color(0xFFECFEFF),
+                ),
+              if ((user.email ?? '').trim().isNotEmpty)
+                _infoChip(
+                  icon: Icons.alternate_email_rounded,
+                  label: user.email!.trim(),
+                  color: const Color(0xFFEEF2FF),
+                ),
+            ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 10),
           Text(
             'Lan dang nhap: ${formatDateTime(user.lastLoginAt)}',
             style: const TextStyle(color: Color(0xFF64748B)),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text(
             user.latestCheckTime == null
                 ? 'Hom nay chua co moc cham cong hop le.'
@@ -340,6 +487,116 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
               children: user.todayRecords.map(_momentChip).toList(growable: false),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _latestActivityBanner() {
+    final activity = _latestActivity;
+    if (activity == null) {
+      return const SizedBox.shrink();
+    }
+
+    final accentColor = switch (activity.type) {
+      AppToastType.success => const Color(0xFF15936F),
+      AppToastType.warning => const Color(0xFFB58111),
+      AppToastType.error => const Color(0xFFCB5A32),
+      AppToastType.info => const Color(0xFF265D8F),
+    };
+    final avatarProvider =
+        (activity.avatarUrl ?? '').isEmpty
+            ? null
+            : NetworkImage(activity.avatarUrl!);
+    final actorSeed = (activity.name ?? activity.employeeCode ?? '').trim();
+    final subtitleParts = <String>[
+      if ((activity.employeeCode ?? '').trim().isNotEmpty)
+        activity.employeeCode!.trim(),
+      if ((activity.department ?? '').trim().isNotEmpty)
+        activity.department!.trim(),
+    ];
+
+    return SectionCard(
+      title: 'Thong bao truc tiep',
+      subtitle: 'Cap nhat tu dong khi co nhan vien check-in hoac check-out moi.',
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: accentColor.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: accentColor.withValues(alpha: 0.18)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              radius: 26,
+              backgroundColor: const Color(0xFFDBEAFE),
+              backgroundImage: avatarProvider,
+              child: avatarProvider == null
+                  ? Text(
+                      actorSeed.isEmpty ? '?' : actorSeed[0].toUpperCase(),
+                      style: const TextStyle(
+                        color: Color(0xFF1D4ED8),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          activity.title,
+                          style: const TextStyle(
+                            color: Color(0xFF0F172A),
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      StatusBadge(
+                        label: formatDateTime(activity.happenedAt),
+                        color: accentColor.withValues(alpha: 0.12),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    activity.name ?? 'Nhan vien',
+                    style: const TextStyle(
+                      color: Color(0xFF0F172A),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  if (subtitleParts.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitleParts.join(' | '),
+                      style: const TextStyle(
+                        color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Text(
+                    activity.message,
+                    style: const TextStyle(
+                      color: Color(0xFF475569),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -596,6 +853,10 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
             ),
           ),
           const SizedBox(height: 16),
+          if (_latestActivity != null) ...[
+            _latestActivityBanner(),
+            const SizedBox(height: 16),
+          ],
           SectionCard(
             title: 'Bo loc va che do xem',
             subtitle:
@@ -643,4 +904,26 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
 
     return widget.embedded ? body : SafeArea(child: body);
   }
+}
+
+class _AdminAttendanceActivityEvent {
+  const _AdminAttendanceActivityEvent({
+    required this.title,
+    required this.message,
+    required this.type,
+    required this.name,
+    required this.employeeCode,
+    required this.department,
+    required this.avatarUrl,
+    required this.happenedAt,
+  });
+
+  final String title;
+  final String message;
+  final AppToastType type;
+  final String? name;
+  final String? employeeCode;
+  final String? department;
+  final String? avatarUrl;
+  final DateTime happenedAt;
 }
