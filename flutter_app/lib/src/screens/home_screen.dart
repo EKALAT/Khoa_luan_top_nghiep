@@ -9,6 +9,7 @@ import '../app_session.dart';
 import '../core/network/api_exception.dart';
 import '../core/utils/display_utils.dart';
 import '../models/attendance_record.dart';
+import '../models/network_check_result.dart';
 import '../models/shift_rule.dart';
 import '../models/work_location.dart';
 import '../widgets/app_action_prompt.dart';
@@ -35,6 +36,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Position? _lastPosition;
   DateTime? _lastPositionCapturedAt;
   String? _lastPositionError;
+  bool _isCheckingNetwork = false;
+  NetworkCheckResult? _lastNetworkCheck;
+  DateTime? _lastNetworkCheckedAt;
+  String? _lastNetworkError;
   DateTime _lastRefreshedAt = DateTime.now();
 
   WorkLocation? get _selectedLocation {
@@ -177,6 +182,74 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<String> _readNetworkInfo() async {
     final statuses = await Connectivity().checkConnectivity();
     return connectivityLabel(statuses);
+  }
+
+  Future<void> _runNetworkCheck() async {
+    final location = _selectedLocation;
+    if (location == null) {
+      AppToast.warning(
+        'Chua co dia diem',
+        message: 'Hay chon dia diem lam viec truoc khi kiem tra mang.',
+      );
+      return;
+    }
+
+    setState(() {
+      _isCheckingNetwork = true;
+      _lastNetworkError = null;
+    });
+
+    try {
+      final session = context.read<AppSession>();
+      final networkInfo = await _readNetworkInfo();
+      final result = await session.attendanceRepository.networkCheck(
+        workLocationId: location.id,
+        networkInfo: networkInfo,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _lastNetworkCheck = result;
+        _lastNetworkCheckedAt = DateTime.now();
+        _lastNetworkError = null;
+      });
+
+      AppToast.info(
+        'Da kiem tra mang',
+        message: result.isAllowed
+            ? 'Mang hien tai hop le de cham cong.'
+            : 'Mang hien tai chua hop le de cham cong.',
+      );
+    } on ApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _lastNetworkError = error.message;
+      });
+
+      AppToast.warning('Kiem tra mang that bai', message: error.message);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _lastNetworkError = error.toString();
+      });
+
+      AppToast.error('Khong kiem tra duoc mang', message: error.toString());
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCheckingNetwork = false;
+        });
+      }
+    }
   }
 
   Future<void> _ensureLocationPermission() async {
@@ -792,6 +865,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     onChanged: (value) {
                       setState(() {
                         _selectedLocationId = value;
+                        _lastNetworkCheck = null;
+                        _lastNetworkCheckedAt = null;
+                        _lastNetworkError = null;
                       });
                     },
                   ),
@@ -940,6 +1016,99 @@ class _HomeScreenState extends State<HomeScreen> {
                       label: const Text('Lay GPS hien tai'),
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed:
+                          _isSubmitting || _isCheckingNetwork || selectedLocation == null
+                              ? null
+                              : _runNetworkCheck,
+                      icon: const Icon(Icons.wifi_find_rounded),
+                      label: Text(
+                        _isCheckingNetwork ? 'Dang kiem tra mang...' : 'Kiem tra mang',
+                      ),
+                    ),
+                  ),
+                  if (_lastNetworkCheck != null || (_lastNetworkError ?? '').isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'Trang thai mang',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                              if (_lastNetworkCheck != null)
+                                StatusBadge(
+                                  label: _lastNetworkCheck!.isAllowed
+                                      ? 'Mang hop le'
+                                      : 'Mang khong hop le',
+                                  color: _lastNetworkCheck!.isAllowed
+                                      ? const Color(0xFF10B981)
+                                      : const Color(0xFFEF4444),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          if (_lastNetworkCheck != null) ...[
+                            Text(_lastNetworkCheck!.message),
+                            const SizedBox(height: 6),
+                            Text('Request IP: ${_lastNetworkCheck!.requestIp}'),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Mang thiet bi: ${_lastNetworkCheck!.clientNetworkInfo ?? '--'}',
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Mang hop le: ${_lastNetworkCheck!.allowedNetwork ?? 'Chua cau hinh'}',
+                            ),
+                            if (_lastNetworkCheckedAt != null) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                'Cap nhat: ${formatDateTime(_lastNetworkCheckedAt)}',
+                              ),
+                            ],
+                            if ((_lastNetworkCheck!.reason ?? '').isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                reasonLabel(_lastNetworkCheck!.reason),
+                                style: TextStyle(
+                                  color: _lastNetworkCheck!.isAllowed
+                                      ? const Color(0xFF047857)
+                                      : const Color(0xFFB91C1C),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ],
+                          if ((_lastNetworkError ?? '').isNotEmpty) ...[
+                            Text(
+                              _lastNetworkError!,
+                              style: const TextStyle(
+                                color: Color(0xFFB91C1C),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity,

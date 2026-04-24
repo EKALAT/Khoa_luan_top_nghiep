@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ShiftRule;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class ShiftRuleController extends Controller
 {
@@ -13,6 +14,18 @@ class ShiftRuleController extends Controller
     {
         $rules = ShiftRule::query()
             ->where('is_active', true)
+            ->orderBy('id')
+            ->get();
+
+        return response()->json([
+            'data' => $rules,
+        ]);
+    }
+
+    public function adminIndex(): JsonResponse
+    {
+        $rules = ShiftRule::query()
+            ->orderByDesc('is_active')
             ->orderBy('id')
             ->get();
 
@@ -36,13 +49,21 @@ class ShiftRuleController extends Controller
             'is_active' => ['nullable', 'boolean'],
         ]);
 
-        $rule = ShiftRule::create([
-            ...$validated,
-            'is_active' => $validated['is_active'] ?? true,
-        ]);
+        $rule = DB::transaction(function () use ($validated) {
+            $isActive = $validated['is_active'] ?? true;
+
+            if ($isActive) {
+                ShiftRule::query()->update(['is_active' => false]);
+            }
+
+            return ShiftRule::create([
+                ...$validated,
+                'is_active' => $isActive,
+            ]);
+        });
 
         return response()->json([
-            'message' => 'Tạo quy tắc ca làm việc thành công.',
+            'message' => 'Tao quy tac ca lam viec thanh cong.',
             'data' => $rule,
         ], 201);
     }
@@ -69,11 +90,21 @@ class ShiftRuleController extends Controller
             'is_active' => ['nullable', 'boolean'],
         ]);
 
-        $shiftRule->update($validated);
+        $rule = DB::transaction(function () use ($validated, $shiftRule) {
+            if (($validated['is_active'] ?? null) === true) {
+                ShiftRule::query()
+                    ->whereKeyNot($shiftRule->id)
+                    ->update(['is_active' => false]);
+            }
+
+            $shiftRule->update($validated);
+
+            return $shiftRule->fresh();
+        });
 
         return response()->json([
-            'message' => 'Cập nhật quy tắc ca làm việc thành công.',
-            'data' => $shiftRule->fresh(),
+            'message' => 'Cap nhat quy tac ca lam viec thanh cong.',
+            'data' => $rule,
         ]);
     }
 
@@ -82,7 +113,7 @@ class ShiftRuleController extends Controller
         $shiftRule->delete();
 
         return response()->json([
-            'message' => 'Xóa quy tắc ca làm việc thành công.',
+            'message' => 'Xoa quy tac ca lam viec thanh cong.',
         ]);
     }
 }

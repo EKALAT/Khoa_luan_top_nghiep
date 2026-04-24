@@ -44,15 +44,7 @@ class AuthController extends Controller
             'message' => 'Đăng nhập thành công.',
             'token' => $token,
             'token_type' => 'Bearer',
-            'user' => [
-                'id' => $user->id,
-                'employee_code' => $user->employee_code,
-                'name' => $user->name,
-                'email' => $user->email,
-                'phone' => $user->phone,
-                'role' => $user->role?->name,
-                'department' => $user->department?->name,
-            ],
+            'user' => $this->transformUser($request, $user),
         ]);
     }
 
@@ -69,16 +61,7 @@ class AuthController extends Controller
         $user->load(['role', 'department']);
 
         return response()->json([
-            'user' => [
-                'id' => $user->id,
-                'employee_code' => $user->employee_code,
-                'name' => $user->name,
-                'email' => $user->email,
-                'phone' => $user->phone,
-                'role' => $user->role?->name,
-                'department' => $user->department?->name,
-                'last_login_at' => $user->last_login_at,
-            ],
+            'user' => $this->transformUser($request, $user),
         ]);
     }
 
@@ -101,5 +84,31 @@ class AuthController extends Controller
         return response()->json([
             'message' => 'Đăng xuất thành công.',
         ]);
+    }
+
+    private function transformUser(Request $request, User $user): array
+    {
+        return [
+            'id' => $user->id,
+            'employee_code' => $user->employee_code,
+            'name' => $user->name,
+            'email' => $user->email,
+            'phone' => $user->phone,
+            'avatar_path' => $user->avatar_path,
+            'avatar_url' => $this->resolveAvatarUrl($request, $user->avatar_path),
+            'role' => $user->role?->name,
+            'role_code' => $user->role?->code,
+            'department' => $user->department?->name,
+            'last_login_at' => $user->last_login_at,
+        ];
+    }
+
+    private function resolveAvatarUrl(Request $request, ?string $avatarPath): ?string
+    {
+        if (! $avatarPath) {
+            return null;
+        }
+
+        return rtrim($request->root(), '/') . '/api/avatars/' . rawurlencode(basename($avatarPath));
     }
 }

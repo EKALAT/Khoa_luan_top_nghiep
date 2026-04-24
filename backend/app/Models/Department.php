@@ -11,11 +11,13 @@ class Department extends Model
         'name',
         'code',
         'description',
+        'monthly_salary',
         'is_active',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'monthly_salary' => 'decimal:2',
     ];
 
     public function users(): HasMany

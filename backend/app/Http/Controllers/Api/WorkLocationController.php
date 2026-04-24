@@ -21,14 +21,26 @@ class WorkLocationController extends Controller
         ]);
     }
 
+    public function adminIndex(): JsonResponse
+    {
+        $locations = WorkLocation::query()
+            ->orderByDesc('is_active')
+            ->orderBy('id')
+            ->get();
+
+        return response()->json([
+            'data' => $locations,
+        ]);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:150'],
             'address' => ['nullable', 'string', 'max:255'],
-            'latitude' => ['required', 'numeric'],
-            'longitude' => ['required', 'numeric'],
-            'radius_m' => ['nullable', 'integer', 'min:1'],
+            'latitude' => ['required', 'numeric', 'between:-90,90'],
+            'longitude' => ['required', 'numeric', 'between:-180,180'],
+            'radius_m' => ['nullable', 'integer', 'min:1', 'max:5000'],
             'allowed_network' => ['nullable', 'string', 'max:255'],
             'is_active' => ['nullable', 'boolean'],
         ]);
@@ -44,7 +56,7 @@ class WorkLocationController extends Controller
         ]);
 
         return response()->json([
-            'message' => 'Tạo địa điểm làm việc thành công.',
+            'message' => 'Tao dia diem cong ty thanh cong.',
             'data' => $location,
         ], 201);
     }
@@ -61,9 +73,9 @@ class WorkLocationController extends Controller
         $validated = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:150'],
             'address' => ['nullable', 'string', 'max:255'],
-            'latitude' => ['sometimes', 'required', 'numeric'],
-            'longitude' => ['sometimes', 'required', 'numeric'],
-            'radius_m' => ['nullable', 'integer', 'min:1'],
+            'latitude' => ['sometimes', 'required', 'numeric', 'between:-90,90'],
+            'longitude' => ['sometimes', 'required', 'numeric', 'between:-180,180'],
+            'radius_m' => ['nullable', 'integer', 'min:1', 'max:5000'],
             'allowed_network' => ['nullable', 'string', 'max:255'],
             'is_active' => ['nullable', 'boolean'],
         ]);
@@ -71,7 +83,7 @@ class WorkLocationController extends Controller
         $workLocation->update($validated);
 
         return response()->json([
-            'message' => 'Cập nhật địa điểm làm việc thành công.',
+            'message' => 'Cap nhat dia diem cong ty thanh cong.',
             'data' => $workLocation->fresh(),
         ]);
     }
@@ -81,7 +93,7 @@ class WorkLocationController extends Controller
         $workLocation->delete();
 
         return response()->json([
-            'message' => 'Xóa địa điểm làm việc thành công.',
+            'message' => 'Xoa dia diem cong ty thanh cong.',
         ]);
     }
 }

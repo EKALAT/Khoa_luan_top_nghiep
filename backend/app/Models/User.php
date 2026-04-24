@@ -20,6 +20,7 @@ class User extends Authenticatable
         'name',
         'email',
         'phone',
+        'avatar_path',
         'password',
         'is_active',
         'last_login_at',
@@ -49,7 +50,8 @@ class User extends Authenticatable
     {
         return $this->belongsTo(Department::class);
     }
-        public function attendanceRecords(): HasMany
+
+    public function attendanceRecords(): HasMany
     {
         return $this->hasMany(AttendanceRecord::class);
     }
@@ -58,5 +60,9 @@ class User extends Authenticatable
     {
         return $this->hasMany(AttendanceLog::class);
     }
-    
+
+    public function isAdmin(): bool
+    {
+        return $this->role?->code === 'admin';
+    }
 }

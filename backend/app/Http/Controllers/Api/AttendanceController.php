@@ -66,6 +66,7 @@ class AttendanceController extends Controller
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
+        $isAdmin = $user?->isAdmin() ?? false;
 
         $filters = $request->validate([
             'date' => ['nullable', 'date_format:Y-m-d'],
@@ -81,8 +82,11 @@ class AttendanceController extends Controller
         ]);
 
         $records = AttendanceRecord::query()
-            ->with(['workLocation'])
-            ->where('user_id', $user->id)
+            ->with(['workLocation', 'user.department', 'user.role'])
+            ->when(
+                ! $isAdmin,
+                fn ($query) => $query->where('user_id', $user->id)
+            )
             ->when(
                 $filters['date'] ?? null,
                 fn ($query, $date) => $query->whereDate('check_date', $date)
@@ -108,6 +112,15 @@ class AttendanceController extends Controller
             ->paginate(10)
             ->appends($request->query());
 
+        $records->setCollection(
+            $records->getCollection()->map(
+                fn (AttendanceRecord $record) => $this->transformAttendanceRecord(
+                    request: $request,
+                    record: $record,
+                )
+            )
+        );
+
         return response()->json($records);
     }
 
@@ -128,12 +141,25 @@ class AttendanceController extends Controller
     public function logs(Request $request): JsonResponse
     {
         $user = $request->user();
+        $isAdmin = $user?->isAdmin() ?? false;
 
         $logs = AttendanceLog::query()
-            ->with(['attendanceRecord'])
-            ->where('user_id', $user->id)
+            ->with(['attendanceRecord.workLocation', 'user.department', 'user.role'])
+            ->when(
+                ! $isAdmin,
+                fn ($query) => $query->where('user_id', $user->id)
+            )
             ->orderByDesc('captured_at')
             ->paginate(20);
+
+        $logs->setCollection(
+            $logs->getCollection()->map(
+                fn (AttendanceLog $log) => $this->transformAttendanceLog(
+                    request: $request,
+                    log: $log,
+                )
+            )
+        );
 
         return response()->json($logs);
     }
@@ -278,7 +304,7 @@ class AttendanceController extends Controller
             (float) $workLocation->longitude,
         );
 
-        if ((float) $validated['accuracy_m'] > 20) {
+        if ((float) $validated['accuracy_m'] > 100) {
             $this->createInvalidLog(
                 userId: $user->id,
                 attendanceRecordId: null,
@@ -522,6 +548,95 @@ class AttendanceController extends Controller
         return implode('; ', $parts);
     }
 
+    private function transformAttendanceRecord(Request $request, AttendanceRecord $record): array
+    {
+        $employee = $record->user;
+
+        return [
+            'id' => $record->id,
+            'user_id' => $record->user_id,
+            'work_location_id' => $record->work_location_id,
+            'check_type' => $record->check_type,
+            'status' => $record->status,
+            'check_date' => $record->check_date?->toDateString(),
+            'check_time' => $record->check_time,
+            'distance_m' => $record->distance_m !== null ? (float) $record->distance_m : null,
+            'accuracy_m' => $record->accuracy_m !== null ? (float) $record->accuracy_m : null,
+            'reason' => $record->reason,
+            'work_location' => $record->workLocation ? [
+                'id' => $record->workLocation->id,
+                'name' => $record->workLocation->name,
+                'address' => $record->workLocation->address,
+                'latitude' => $record->workLocation->latitude,
+                'longitude' => $record->workLocation->longitude,
+                'radius_m' => $record->workLocation->radius_m,
+                'allowed_network' => $record->workLocation->allowed_network,
+                'is_active' => $record->workLocation->is_active,
+            ] : null,
+            'employee_code' => $employee?->employee_code,
+            'employee_name' => $employee?->name,
+            'employee_avatar_url' => $this->resolveAvatarUrl($request, $employee?->avatar_path),
+            'employee_department' => $employee?->department?->name,
+            'employee_role' => $employee?->role?->name,
+        ];
+    }
+
+    private function transformAttendanceLog(Request $request, AttendanceLog $log): array
+    {
+        $employee = $log->user;
+        $record = $log->attendanceRecord;
+
+        return [
+            'id' => $log->id,
+            'user_id' => $log->user_id,
+            'attendance_record_id' => $log->attendance_record_id,
+            'lat' => (float) $log->lat,
+            'lng' => (float) $log->lng,
+            'accuracy_m' => $log->accuracy_m !== null ? (float) $log->accuracy_m : null,
+            'captured_at' => $log->captured_at?->toISOString(),
+            'device_info' => $log->device_info,
+            'network_info' => $log->network_info,
+            'result' => $log->result,
+            'reason' => $log->reason,
+            'attendance_record' => $record ? [
+                'id' => $record->id,
+                'user_id' => $record->user_id,
+                'work_location_id' => $record->work_location_id,
+                'check_type' => $record->check_type,
+                'status' => $record->status,
+                'check_date' => $record->check_date?->toDateString(),
+                'check_time' => $record->check_time,
+                'distance_m' => $record->distance_m !== null ? (float) $record->distance_m : null,
+                'accuracy_m' => $record->accuracy_m !== null ? (float) $record->accuracy_m : null,
+                'reason' => $record->reason,
+                'work_location' => $record->workLocation ? [
+                    'id' => $record->workLocation->id,
+                    'name' => $record->workLocation->name,
+                    'address' => $record->workLocation->address,
+                    'latitude' => $record->workLocation->latitude,
+                    'longitude' => $record->workLocation->longitude,
+                    'radius_m' => $record->workLocation->radius_m,
+                    'allowed_network' => $record->workLocation->allowed_network,
+                    'is_active' => $record->workLocation->is_active,
+                ] : null,
+            ] : null,
+            'employee_code' => $employee?->employee_code,
+            'employee_name' => $employee?->name,
+            'employee_avatar_url' => $this->resolveAvatarUrl($request, $employee?->avatar_path),
+            'employee_department' => $employee?->department?->name,
+            'employee_role' => $employee?->role?->name,
+        ];
+    }
+
+    private function resolveAvatarUrl(Request $request, ?string $avatarPath): ?string
+    {
+        if (! $avatarPath) {
+            return null;
+        }
+
+        return rtrim($request->root(), '/') . '/api/avatars/' . rawurlencode(basename($avatarPath));
+    }
+
     private function isIpCidr(string $value): bool
     {
         if (! str_contains($value, '/')) {
@@ -549,8 +664,8 @@ class AttendanceController extends Controller
 
         $prefixLength = (int) $prefixLength;
 
-        $isIpv6Ip = filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6);
-        $isIpv6Subnet = filter_var($subnet, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6);
+        $isIpv6Ip = filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false;
+        $isIpv6Subnet = filter_var($subnet, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false;
 
         if ($isIpv6Ip !== $isIpv6Subnet) {
             return false;

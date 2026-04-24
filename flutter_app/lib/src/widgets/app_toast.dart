@@ -11,19 +11,39 @@ class AppToast {
   static Timer? _timer;
 
   static void success(String title, {String? message}) {
-    _show(type: AppToastType.success, title: title, message: message);
+    _show(
+      type: AppToastType.success,
+      title: title,
+      message: message,
+      duration: const Duration(seconds: 3),
+    );
   }
 
   static void error(String title, {String? message}) {
-    _show(type: AppToastType.error, title: title, message: message);
+    _show(
+      type: AppToastType.error,
+      title: title,
+      message: message,
+      duration: const Duration(seconds: 3),
+    );
   }
 
   static void info(String title, {String? message}) {
-    _show(type: AppToastType.info, title: title, message: message);
+    _show(
+      type: AppToastType.info,
+      title: title,
+      message: message,
+      duration: const Duration(seconds: 3),
+    );
   }
 
   static void warning(String title, {String? message}) {
-    _show(type: AppToastType.warning, title: title, message: message);
+    _show(
+      type: AppToastType.warning,
+      title: title,
+      message: message,
+      duration: const Duration(seconds: 3),
+    );
   }
 
   static void activity({
@@ -43,12 +63,14 @@ class AppToast {
       actorName: name,
       actorCode: employeeCode,
       actorDepartment: department,
+      duration: const Duration(seconds: 15),
     );
   }
 
   static void _show({
     required AppToastType type,
     required String title,
+    required Duration duration,
     String? message,
     String? avatarUrl,
     String? actorName,
@@ -85,7 +107,7 @@ class AppToast {
     _entry = entry;
     overlay.insert(entry);
 
-    _timer = Timer(const Duration(seconds: 3), () {
+    _timer = Timer(duration, () {
       if (_entry == entry) {
         entry.remove();
         _entry = null;

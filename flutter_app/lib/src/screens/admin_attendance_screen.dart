@@ -244,35 +244,73 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
     };
   }
 
-  Color _attendanceStatusColor(String value) {
+  Color _attendanceStatusTextColor(String value) {
     return switch (value) {
-      'not_checked_in' => const Color(0xFFFEE2E2),
-      'partial' => const Color(0xFFFEF3C7),
+      'not_checked_in' => const Color(0xFFB42318),
+      'partial' => const Color(0xFFB54708),
+      'completed' => const Color(0xFF027A48),
+      _ => const Color(0xFF334155),
+    };
+  }
+
+  Color _attendanceStatusBackgroundColor(String value) {
+    return switch (value) {
+      'not_checked_in' => const Color(0xFFFFE4E8),
+      'partial' => const Color(0xFFFFF1D6),
       'completed' => const Color(0xFFDCFCE7),
-      _ => const Color(0xFFE2E8F0),
+      _ => const Color(0xFFF1F5F9),
+    };
+  }
+
+  Color _attendanceStatusBorderColor(String value) {
+    return switch (value) {
+      'not_checked_in' => const Color(0xFFFDA4AF),
+      'partial' => const Color(0xFFFACF85),
+      'completed' => const Color(0xFF86EFAC),
+      _ => const Color(0xFFCBD5E1),
     };
   }
 
   Widget _summaryStat({
     required String label,
     required String value,
-    required Color color,
+    required String hint,
+    required Color accent,
+    required Color surface,
+    required IconData icon,
   }) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.14),
+        color: surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x120F172A),
+            blurRadius: 12,
+            offset: Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: accent),
+          ),
+          const SizedBox(height: 16),
           Text(
             value,
             style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
+              color: Color(0xFF0F172A),
+              fontSize: 26,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -280,10 +318,228 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
           Text(
             label,
             style: TextStyle(
-              color: color,
-              fontSize: 12,
+              color: accent,
+              fontSize: 13,
               fontWeight: FontWeight.w700,
             ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            hint,
+            style: const TextStyle(
+              color: Color(0xFF475569),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _recentActivityShowcase(AdminAttendanceRecentActivity? activity) {
+    if (activity == null) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+        ),
+        child: const Text(
+          'Chua co hoat dong cham cong hop le nao trong ngay da chon.',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      );
+    }
+
+    final avatarProvider =
+        (activity.avatarUrl ?? '').isEmpty
+            ? null
+            : NetworkImage(activity.avatarUrl!);
+    final actorSeed = (activity.name ?? activity.employeeCode ?? '').trim();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 26,
+            backgroundColor: const Color(0xFFD1FAE5),
+            backgroundImage: avatarProvider,
+            child: avatarProvider == null
+                ? Text(
+                    actorSeed.isEmpty ? '?' : actorSeed[0].toUpperCase(),
+                    style: const TextStyle(
+                      color: Color(0xFF047857),
+                      fontWeight: FontWeight.w800,
+                    ),
+                  )
+                : null,
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Hoat dong gan nhat',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  activity.name ?? 'Nhan vien',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  [
+                    if ((activity.employeeCode ?? '').trim().isNotEmpty)
+                      activity.employeeCode!.trim(),
+                    if ((activity.department ?? '').trim().isNotEmpty)
+                      activity.department!.trim(),
+                  ].join(' | '),
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.84),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${attendanceTypeLabel(activity.checkType)} luc ${formatTime(activity.checkTime)}'
+                  '${(activity.workLocationName ?? '').trim().isNotEmpty ? ' - ${activity.workLocationName!.trim()}' : ''}',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.94),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _recentActivityTile(AdminAttendanceRecentActivity activity, int index) {
+    final avatarProvider =
+        (activity.avatarUrl ?? '').isEmpty
+            ? null
+            : NetworkImage(activity.avatarUrl!);
+    final actorSeed = (activity.name ?? activity.employeeCode ?? '').trim();
+    final isCheckOut = (activity.checkType ?? '').contains('out');
+    final accent = isCheckOut
+        ? const Color(0xFFD97706)
+        : const Color(0xFF047857);
+    final surface = isCheckOut
+        ? const Color(0xFFFFF7ED)
+        : const Color(0xFFECFDF5);
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: accent.withValues(alpha: 0.16)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              '${index + 1}',
+              style: TextStyle(
+                color: accent,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          CircleAvatar(
+            radius: 20,
+            backgroundColor: const Color(0xFFDBEAFE),
+            backgroundImage: avatarProvider,
+            child: avatarProvider == null
+                ? Text(
+                    actorSeed.isEmpty ? '?' : actorSeed[0].toUpperCase(),
+                    style: const TextStyle(
+                      color: Color(0xFF1D4ED8),
+                      fontWeight: FontWeight.w800,
+                    ),
+                  )
+                : null,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  activity.name ?? 'Nhan vien',
+                  style: const TextStyle(
+                    color: Color(0xFF0F172A),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  [
+                    if ((activity.employeeCode ?? '').trim().isNotEmpty)
+                      activity.employeeCode!.trim(),
+                    if ((activity.department ?? '').trim().isNotEmpty)
+                      activity.department!.trim(),
+                  ].join(' | '),
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              StatusBadge(
+                label: attendanceTypeLabel(activity.checkType),
+                color: accent,
+                backgroundColor: accent.withValues(alpha: 0.12),
+                borderColor: accent.withValues(alpha: 0.24),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                formatTime(activity.checkTime),
+                style: const TextStyle(
+                  color: Color(0xFF0F172A),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -408,12 +664,22 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                       children: [
                         StatusBadge(
                           label: _attendanceStatusLabel(user.attendanceStatus),
-                          color: _attendanceStatusColor(user.attendanceStatus),
+                          color: _attendanceStatusTextColor(
+                            user.attendanceStatus,
+                          ),
+                          backgroundColor: _attendanceStatusBackgroundColor(
+                            user.attendanceStatus,
+                          ),
+                          borderColor: _attendanceStatusBorderColor(
+                            user.attendanceStatus,
+                          ),
                         ),
                         StatusBadge(
                           label:
                               '${user.validRecordCount}/${_overview?.summary.expectedValidRecords ?? 4} moc',
-                          color: const Color(0xFFDBEAFE),
+                          color: const Color(0xFF1D4ED8),
+                          backgroundColor: const Color(0xFFDBEAFE),
+                          borderColor: const Color(0xFF93C5FD),
                         ),
                       ],
                     ),
@@ -561,7 +827,9 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                       ),
                       StatusBadge(
                         label: formatDateTime(activity.happenedAt),
-                        color: accentColor.withValues(alpha: 0.12),
+                        color: accentColor,
+                        backgroundColor: accentColor.withValues(alpha: 0.12),
+                        borderColor: accentColor.withValues(alpha: 0.24),
                       ),
                     ],
                   ),
@@ -768,6 +1036,11 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
 
     final overview = _overview;
     final users = overview?.page.data ?? const <AdminAttendanceUser>[];
+    final recentActivities =
+        overview?.summary.recentActivities ??
+        const <AdminAttendanceRecentActivity>[];
+    final latestRecentActivity =
+        recentActivities.isEmpty ? null : recentActivities.first;
 
     final body = RefreshIndicator(
       onRefresh: _bootstrap,
@@ -796,7 +1069,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Cham cong theo ngay',
+                  'Dashboard admin hom nay',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         color: Colors.white,
                         fontWeight: FontWeight.w800,
@@ -804,7 +1077,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Theo doi ai da cham, ai chua cham va ai da hoan thanh du 4 moc trong ngay.',
+                  'Tong quan nhanh tinh hinh cham cong trong ngay, muc do hoan thanh va 3 hoat dong moi nhat de trinh bay demo ro rang hon.',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Colors.white.withValues(alpha: 0.84),
                         height: 1.45,
@@ -816,39 +1089,104 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                   runSpacing: 12,
                   children: [
                     SizedBox(
-                      width: 150,
+                      width: 220,
                       child: _summaryStat(
                         label: 'Tong nhan su',
                         value: '${overview?.summary.totalUsers ?? 0}',
-                        color: const Color(0xFFE0F2FE),
+                        hint: 'Tong so nhan vien dang duoc theo doi trong ngay.',
+                        accent: const Color(0xFF2563EB),
+                        surface: const Color(0xFFF8FBFF),
+                        icon: Icons.groups_rounded,
                       ),
                     ),
                     SizedBox(
-                      width: 150,
+                      width: 220,
                       child: _summaryStat(
-                        label: 'Da cham it nhat 1 moc',
+                        label: 'Da cham hom nay',
                         value: '${overview?.summary.checkedInCount ?? 0}',
-                        color: const Color(0xFFDBEAFE),
+                        hint: 'Da co it nhat mot ban ghi hop le trong ngay.',
+                        accent: const Color(0xFF0F766E),
+                        surface: const Color(0xFFF2FFFA),
+                        icon: Icons.fact_check_rounded,
                       ),
                     ),
                     SizedBox(
-                      width: 150,
+                      width: 220,
                       child: _summaryStat(
                         label: 'Chua cham',
                         value: '${overview?.summary.notCheckedInCount ?? 0}',
-                        color: const Color(0xFFFECACA),
+                        hint: 'Chua ghi nhan moc cham cong hop le nao.',
+                        accent: const Color(0xFFB42318),
+                        surface: const Color(0xFFFFF7F7),
+                        icon: Icons.person_off_rounded,
                       ),
                     ),
                     SizedBox(
-                      width: 150,
+                      width: 220,
                       child: _summaryStat(
-                        label: 'Hoan thanh',
+                        label: 'Du 4 moc',
                         value: '${overview?.summary.completedCount ?? 0}',
-                        color: const Color(0xFFBBF7D0),
+                        hint: 'Da hoan thanh day du chu ky check-in/check-out.',
+                        accent: const Color(0xFF027A48),
+                        surface: const Color(0xFFF3FFF7),
+                        icon: Icons.verified_rounded,
                       ),
                     ),
                   ],
                 ),
+                const SizedBox(height: 18),
+                _recentActivityShowcase(latestRecentActivity),
+                if (recentActivities.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.16),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '3 hoat dong moi nhat',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Giup admin theo doi ai vua den cong ty hoac vua ket thuc ca.',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.82),
+                            fontWeight: FontWeight.w600,
+                            height: 1.4,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Column(
+                          children: [
+                            for (var index = 0;
+                                index < recentActivities.length;
+                                index++) ...[
+                              _recentActivityTile(
+                                recentActivities[index],
+                                index,
+                              ),
+                              if (index != recentActivities.length - 1)
+                                const SizedBox(height: 10),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
